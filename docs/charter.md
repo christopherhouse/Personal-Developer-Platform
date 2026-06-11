@@ -59,7 +59,8 @@ conversation. The end state is being able to say:
 
 ## Related documents
 
-- [Architecture & tech stack](architecture.md)
+- [Architecture](architecture.md)
+- [Tech stack](tech-stack.md)
 - [Domain glossary](glossary.md)
 - [Constitution (draft principles)](constitution.md)
 - [Spec backlog](spec-backlog.md)

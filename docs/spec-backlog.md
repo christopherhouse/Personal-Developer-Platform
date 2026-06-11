@@ -6,20 +6,21 @@ Candidate feature specs in proposed build order. Each row becomes a
 | # | Spec | Scope (one line) | Depends on |
 |---|---|---|---|
 | 1 | **platform-foundations** | Repo layout, OpenTofu scaffolding + pinned versions, state backend deployment, tag schema, naming convention, CI skeleton (plan on PR / apply on merge). | — |
-| 2 | **ipam-registry** | Address-space registry: supernet-per-region scheme, hub carve-outs, spoke allocation/release, CI validation against live state. | 1 |
+| 2 | **ipam-ledger** | Control-plane Postgres deployment + IPAM schema: pools/allocations with native `cidr` types, GiST exclusion non-overlap, advisory-lock allocator, supernet-per-region scheme, hub carve-outs, allocation/release operations. | 1 |
 | 3 | **regional-hub-fabric** | Deploy/destroy a complete regional hub: hub VNet, egress (firewall decision lives here), private DNS, bastion/management access. | 1, 2 |
 | 4 | **spoke-vending** | Atomic spoke creation into any writable subscription: allocation, VNet, cross-sub peering, routes, NSGs, DNS link — and clean teardown. | 2, 3 |
 | 5 | **environment-inventory** | Resource Graph-backed inventory across all accessible subscriptions: list fabrics/spokes/workloads/environments, subscription discovery, drift surface. | 1 |
-| 6 | **pdp-cli** | The `pdp` action layer: typed verbs wrapping specs 2–5, plan/confirm flow, structured output (human + JSON). | 2–5 |
-| 7 | **mcp-chatops** | `pdp-mcp` server exposing the verbs as MCP tools, destructive-op confirmation flow, conversational inventory answers. | 6 |
-| 8 | **workload-archetypes** | Archetype catalog format + parameter contract, plus the first archetype (e.g., container app + database) deployable into a spoke. | 4, 6 |
+| 6 | **action-layer** | The .NET 10 verb implementation (control plane): typed verbs wrapping specs 2–5, GitHub Actions dispatch (GitHub App, `workflow_dispatch`, `env_id` correlation) + `workflow_run` webhook status tracking, plan/confirm flow, `pdp` CLI front-end with structured output (human + JSON). | 2–5 |
+| 7 | **mcp-chatops** | `pdp-mcp`: ASP.NET Core MCP server (streamable HTTP) exposing the verbs as MCP tools, hosted on Azure Container Apps (no APIM), Entra auth, destructive-op confirmation flow, conversational inventory answers. | 6 |
+| 8 | **workload-archetypes** | Archetype catalog in the control-plane DB (module path, git tag, parameter JSON schema) + workload template repo, plus the first archetype (e.g., container app + database) deployable into a spoke. | 4, 6 |
 | 9 | **multi-region** | Second-region rollout ergonomics, hub↔hub connectivity (if any), region-aware verb behavior. | 3, 4 |
 | 10 | **observability-guardrails** | Diagnostics/log routing, Azure Policy for tag/egress enforcement, cost visibility per environment. | 3–5 |
 
 ## Notes
 
 - Specs 1–4 are the critical path to "deploy me a spoke in East US 2."
-- Spec 7 (chatops) intentionally lands *after* the CLI: the MCP server is a
-  thin adapter over verbs that must already exist and be trustworthy.
+- Spec 7 (chatops) intentionally lands *after* the action layer: the MCP
+  server is a thin adapter over verbs that must already exist and be
+  trustworthy.
 - The list will grow; add candidates here before spinning up a spec so
   dependencies stay visible.

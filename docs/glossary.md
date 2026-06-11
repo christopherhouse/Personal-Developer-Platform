@@ -16,6 +16,12 @@ here first.
 | **Target subscription** | Any subscription the owner's identity can write to; valid destination for spokes and workloads. Discovered at runtime, never hardcoded. |
 | **Verb / action layer** | The typed, deterministic operations the platform exposes (`fabric create`, `spoke create`, `workload deploy`, `env list`, …). Implemented once, consumed by both the `pdp` CLI and the MCP server. |
 | **Inventory** | The live, queryable answer to "what does PDP manage?" — derived from Azure Resource Graph over the mandatory tag schema, never from local records alone. |
-| **IPAM registry** | The versioned record of address-space allocations (supernets per region, hub carve-outs, spoke blocks). The only authority for assigning CIDR ranges. |
+| **IPAM ledger** (formerly "IPAM registry") | The Postgres tables recording address-space allocations (supernets per region, hub carve-outs, spoke blocks) using native `cidr` types, with non-overlap enforced by a GiST exclusion constraint. The only authority for assigning CIDR ranges. |
+| **Control plane** | The hosted .NET service (ACA) implementing the verbs: validates requests, allocates from the IPAM ledger, records intent in Postgres, dispatches execution-plane workflows, and receives their status webhooks. Never executes IaC itself. |
+| **Execution plane** | GitHub Actions workflows in the platform repo that run OpenTofu plan/apply/destroy, authenticated to Azure via OIDC. The only place IaC executes. |
+| **Provisioning run** | One recorded execution-plane run (provision or destroy) for an environment: dispatch inputs, GitHub run ID/URL, outcome. The audit trail in Postgres. |
+| **Archetype catalog** | The Postgres table registering deployable workload archetypes: module path, pinned git tag, parameter JSON schema. A verb can only stamp what the catalog lists. |
+| **Platform repo** | This repository: fabric/archetype OpenTofu modules, provisioning + reusable workflows, control-plane source. The only place fabric IaC lives. |
+| **Workload template repo** | A GitHub template repository used to stamp new workload app repos, whose CI consumes the platform repo's reusable workflows. |
 | **AVM** | Azure Verified Modules — Microsoft-maintained IaC modules. PDP's default building blocks (Terraform flavor, run under OpenTofu). |
 | **Chatops** | Operating the platform through natural-language conversation with Claude, which calls platform verbs via the `pdp-mcp` MCP server. |

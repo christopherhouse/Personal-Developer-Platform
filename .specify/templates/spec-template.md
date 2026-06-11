@@ -108,6 +108,10 @@
 <!--
   ACTION REQUIRED: Define measurable success criteria.
   These must be technology-agnostic and measurable.
+
+  Constitution (Article IV): if this feature creates Azure resources, acceptance
+  criteria MUST include clean teardown — no orphaned resources, no leaked address
+  allocations, no dangling peerings.
 -->
 
 ### Measurable Outcomes

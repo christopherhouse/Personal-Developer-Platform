@@ -1,7 +1,8 @@
 # Architecture & Tech Stack — Personal Developer Platform (PDP)
 
 Decisions recorded here are inherited by every spec. Changing one of these is
-an architecture change, not a feature change.
+an architecture change, not a feature change. For the flat tool/version quick
+reference, see [tech-stack.md](tech-stack.md) — this doc carries the *why*.
 
 ## Infrastructure as Code
 
@@ -26,7 +27,8 @@ an architecture change, not a feature change.
 
 - **Platform subscription:** hosts all regional hubs (one resource group per
   regional fabric), the state backend, and shared platform services
-  (DNS zones, IPAM registry, etc.).
+  (DNS zones, the control plane on Container Apps, the control-plane
+  Postgres, etc.).
 - **Target subscriptions:** spokes and workloads deploy into *any subscription
   the owner's identity can write to*. "Available subscriptions" is discovered
   at runtime (ARM subscription list filtered by writable RBAC), never
@@ -42,26 +44,77 @@ an architecture change, not a feature change.
   at vending time.
 - **IPAM:** every regional fabric owns a supernet (e.g., a /16 per region);
   the hub takes a fixed carve-out and spokes are allocated non-overlapping
-  blocks from the remainder. Allocations live in a versioned registry
-  (file-based in-repo for v1, validated in CI) — no address space is ever
-  assigned ad hoc. Exact scheme is defined in the IPAM spec.
+  blocks from the remainder. Allocations live in the **control-plane Postgres**
+  using native `cidr` columns; non-overlap is enforced *by the database* with
+  a GiST exclusion constraint (`EXCLUDE USING gist (pool_id WITH =, cidr
+  inet_ops WITH &&)` over live allocations) and allocation is serialized per
+  pool with `pg_advisory_xact_lock`. No address space is ever assigned ad hoc.
+  Azure-native IPAM (AVNM) was evaluated and rejected — we own the ledger.
+  Exact pool scheme is defined in the IPAM spec.
 
 ## Action layer (the platform's API)
 
-- A single **`pdp` CLI** is the canonical interface: typed, deterministic
-  verbs (`fabric create`, `spoke create`, `workload deploy`, `env list`,
-  `… destroy`, etc.) that orchestrate OpenTofu plan/apply and Azure queries.
-- **Language:** Python — Typer for the CLI, official MCP Python SDK for the
-  server, Azure SDK (Resource Graph, ARM) for queries, `tofu` invoked as a
-  subprocess.
+- A single set of typed, deterministic **verbs** (`fabric create`,
+  `spoke create`, `workload deploy`, `env list`, `… destroy`, etc.)
+  implemented once and consumed by two front-ends: the `pdp` CLI and the
+  `pdp-mcp` MCP server.
+- **Language:** .NET 10 (no Python) — ASP.NET Core minimal APIs for the
+  control-plane service, the official MCP C# SDK for the server,
+  System.CommandLine for the CLI, `Azure.ResourceManager` for queries.
+- The verb implementation is a **control plane, not an executor**. A mutating
+  verb validates the request against the archetype catalog, allocates address
+  space from the IPAM ledger, records intent in Postgres, and **dispatches a
+  GitHub Actions workflow** that performs the actual OpenTofu plan/apply.
+  OpenTofu never runs inside the control-plane process.
 - The **MCP server is a thin adapter** over the same verbs the CLI uses. The
   AI never generates or applies IaC directly; it only calls platform verbs.
   One implementation, two front-ends (CLI, chat).
 
+## Control-plane data (Postgres)
+
+- One **Azure Database for PostgreSQL Flexible Server** in the platform
+  subscription is the solution-scoped store, holding four things:
+  the **environment registry** (owner, status lifecycle
+  `requested → provisioning → active → destroying → destroyed`, archetype +
+  version, parameters), **provisioning runs** (audit trail correlated to
+  GitHub Actions run IDs/URLs), the **archetype catalog** (module path,
+  git tag, parameter JSON schema — which doubles as verb input validation),
+  and the **IPAM ledger** (pools + allocations, see Networking model).
+- Division of truth: Postgres records **intent and allocation**; live Azure
+  via Resource Graph remains the truth for **what's deployed** (inventory).
+- Resources created outside the platform never integrate with it — accepted
+  by design; there is no reconciliation loop.
+
+## Execution plane (GitHub Actions)
+
+- **All applies and destroys run as GitHub Actions workflows** in this
+  (platform) repo — never on a laptop, never in the control plane.
+- **Kick-off:** the control plane authenticates as a **GitHub App** and calls
+  `workflow_dispatch` with typed inputs (`env_id`, allocated CIDR, archetype +
+  version tag, region, …). The workflow's `run-name` embeds `env_id` for
+  correlation, since the dispatch API returns no run ID.
+- **Monitoring:** the GitHub App delivers `workflow_run` webhooks to the
+  control plane, which updates run + environment status in Postgres. Status
+  queries (`env list`, chat questions) read Postgres and link to the live
+  Actions run. No polling in the happy path.
+- **No IaC generation at provision time** — not by the tool, not by the
+  model. Workflows marry pinned catalog module versions (git tags) to
+  per-run tfvars built from dispatch inputs: templates are code,
+  environments are rows. New archetypes enter only as reviewed PRs to this
+  repo. Nothing per-environment is committed to git; Postgres and OpenTofu
+  state are the records.
+- Workload app repos are stamped from a **template repo** and consume this
+  repo's reusable workflows for deploys; fabric IaC never lives in workload
+  repos.
+
 ## AI / chatops
 
 - **v1 surface:** MCP server (`pdp-mcp`) + Claude (Claude Code / Claude
-  desktop) as the chat client. Runs locally under the owner's credentials.
+  desktop) as the chat client. The server is **remote**: ASP.NET Core with
+  streamable HTTP transport, hosted on **Azure Container Apps** in the
+  platform subscription (vnet-integrated, scale-to-zero). **No APIM in
+  front** — auth is handled by the server itself (Entra ID; exact flow
+  resolved in the mcp-chatops spec).
 - **Guardrails:** destructive verbs (destroy, detach, reassign address space)
   require explicit confirmation; plan/preview output is surfaced to the user
   before apply for anything that mutates infrastructure.
@@ -78,12 +131,17 @@ an architecture change, not a feature change.
 
 ## Identity & execution
 
-- Local execution (CLI, MCP server) uses the owner's `az login` context via
-  `DefaultAzureCredential`.
-- CI (GitHub Actions) uses OIDC federated credentials — no stored secrets.
-- CI runs plan on PR and apply on merge for fabric-level changes; spoke and
-  workload operations may also run interactively via CLI/MCP, but always
-  through the same verbs, state backend, and tag schema.
+- The hosted control plane (ACA) runs under a **managed identity** for
+  Postgres and Resource Graph access; its GitHub App credentials are the only
+  non-Azure secret in the system.
+- Provisioning workflows (GitHub Actions) use **OIDC federated credentials**
+  to reach Azure — no stored cloud secrets anywhere.
+- Local `pdp` CLI use runs under the owner's `az login` context via
+  `DefaultAzureCredential` for read/inventory paths and calls the control
+  plane for mutations — so every apply, however initiated, flows through the
+  same verbs, dispatch path, state backend, and tag schema.
+- CI also runs plan on PR / apply on merge for changes to the platform's own
+  IaC (hubs, control plane, state backend).
 
 ## Naming
 
@@ -96,7 +154,14 @@ an architecture change, not a feature change.
 
 - Firewall tier in the hub: Azure Firewall (cost!) vs. NVA vs. NAT Gateway +
   NSGs for a personal-scale "egress through hub" posture.
-- IPAM registry format and the supernet-per-region scheme.
-- Workload archetype catalog format and parameter contract.
-- How ad-hoc (CLI/MCP-initiated) applies reconcile with the git history —
-  e.g., auto-commit of vending records.
+- Supernet-per-region scheme details (pool sizes, hub carve-out convention) —
+  the IPAM *storage* decision (Postgres ledger) is made; the addressing plan
+  itself lands in the IPAM spec.
+- Archetype parameter contract details (JSON schema conventions, defaults).
+- MCP server auth specifics: Entra app registration, OAuth
+  protected-resource metadata, local-client sign-in flow.
+
+*Resolved since first draft:* IPAM registry format (→ Postgres ledger, not
+file-based); how ad-hoc applies reconcile with git (→ there are no ad-hoc
+applies; everything executes via dispatched workflows, and no per-env records
+are committed).

@@ -1,6 +1,10 @@
 # Constitution (Draft) — Personal Developer Platform
 
-Draft principles to feed into `/speckit.constitution` after `specify init`.
+> **Superseded.** These draft principles were ratified into the canonical
+> constitution at [`.specify/memory/constitution.md`](../.specify/memory/constitution.md)
+> (v1.0.0, 2026-06-11). Amend that file, not this one.
+
+Draft principles fed into `/speckit-constitution` after `specify init`.
 These are non-negotiables; specs that violate them are wrong by definition.
 
 ## Article I — Infrastructure is code
