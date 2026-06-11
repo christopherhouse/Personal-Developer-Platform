@@ -40,13 +40,13 @@ created with the full 30-day contract config.
 **Purpose**: The repository layout (FR-001) and version pins (FR-005) everything else
 lands on.
 
-- [ ] T001 Create repository layout per plan.md: `infra/foundations/`,
+- [X] T001 Create repository layout per plan.md: `infra/foundations/`,
       `infra/fabrics/.gitkeep`, `infra/modules/.gitkeep`, `archetypes/.gitkeep`,
       `src/.gitkeep`, `.github/workflows/`, `scripts/`
-- [ ] T002 [P] Write `.opentofu-version` (pin OpenTofu 1.11.6) at repo root
-- [ ] T003 [P] Write `global.json` pinning .NET 10 SDK (`rollForward: latestFeature`) at
+- [X] T002 [P] Write `.opentofu-version` (pin OpenTofu 1.11.6) at repo root
+- [X] T003 [P] Write `global.json` pinning .NET 10 SDK (`rollForward: latestFeature`) at
       repo root
-- [ ] T004 [P] Add repo-root `README.md` section documenting the layout map (what lives
+- [X] T004 [P] Add repo-root `README.md` section documenting the layout map (what lives
       where, which specs own which directories) per FR-001
 
 ---

@@ -1,0 +1,36 @@
+# --- OpenTofu / Terraform ---
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# Variable files may carry environment-specific values; ours carry no secrets
+# (constitution: zero stored secrets), but they are per-machine, not source.
+*.tfvars
+*.tfvars.json
+# Override files are local experiments by definition
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored — committed lockfiles are
+# the version-pin mechanism (FR-006); provider bumps must appear as PR diffs.
+
+# --- .NET ---
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# --- Universal ---
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.idea/
+.vscode/
+*.log
+.env
+.env.*
