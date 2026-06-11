@@ -116,6 +116,8 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Active feature: 001-platform-foundations (branch `001-platform-foundations`).
+Current plan: specs/001-platform-foundations/plan.md — read it for technical context,
+project structure, and constitution gates. Supporting design artifacts:
+specs/001-platform-foundations/research.md, data-model.md, quickstart.md, contracts/.
 <!-- SPECKIT END -->
