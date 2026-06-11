@@ -57,16 +57,18 @@ lands on.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 Scaffold the foundations stack in `infra/foundations/`: `versions.tf` with
-      `required_version = "~> 1.11.0"`, `azurerm ~> 4.x` provider block (minor-pinned),
-      provider `features {}` config per research.md §8
-- [ ] T006 [P] Create `infra/foundations/variables.tf` with region/tag/naming locals per
+- [X] T005 Scaffold the foundations stack in `infra/foundations/`: `versions.tf` with
+      `required_version = "~> 1.11.0"`, `azurerm ~> 4.77.0` provider block
+      (minor-pinned against registry latest, verified 2026-06-11), provider
+      `features {}` + `storage_use_azuread = true` per research.md §8
+- [X] T006 [P] Create `infra/foundations/variables.tf` with region/tag/naming locals per
       data-model.md §1–2 (seed identifiers are backend config, not variables — they
       live only in `backend.tf`)
-- [ ] T007 [P] Create `infra/foundations/outputs.tf` exposing the PDP backend
-      identifiers (RG, account name, container) and CI identity client ID (consumed by
-      later stacks' backend blocks and CI variables)
-- [ ] T008 Write `infra/foundations/backend.tf` with the verified seed identifiers
+- [X] T007 [P] Create `infra/foundations/outputs.tf` exposing the PDP backend
+      identifiers (RG, account name, container) and CI identity client ID — committed
+      as documented stubs until the resources land in Phase 3 (keeps `tofu validate`
+      green)
+- [X] T008 Write `infra/foundations/backend.tf` with the verified seed identifiers
       (table at top of this file): backend azurerm → `RG-TF` / `cmhtfstatesa` /
       `tfstate`, key `pdp/foundations`, `use_azuread_auth = true` — verified working
       Entra-only 2026-06-11
