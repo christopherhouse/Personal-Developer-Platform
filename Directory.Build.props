@@ -1,0 +1,21 @@
+<Project>
+
+  <!-- Shared build settings for every PDP .NET project (first platform code — spec 002).
+       Kept deliberately small: language/runtime hygiene + analyzers as a quality gate.
+       Test projects relax warnings-as-errors where xUnit analyzers would block scaffolding. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Analyzers on, warnings are errors — the constitution's "secure & correct by
+         default" posture applied to platform code. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

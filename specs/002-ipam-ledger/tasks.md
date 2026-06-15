@@ -38,21 +38,21 @@ regional scheme, US4 visibility) so each is an independently testable increment.
 **Purpose**: The .NET solution skeleton, the OpenTofu stack scaffold, and the .NET CI
 workflow everything else lands on. (`global.json` already pins the .NET SDK — spec 001.)
 
-- [ ] T001 Create the .NET solution `Pdp.sln` at repo root and `Directory.Build.props`
+- [X] T001 Create the .NET solution `Pdp.sln` at repo root and `Directory.Build.props`
       (nullable enable, implicit usings, `LangVersion latest`, analyzers on, warnings-as-errors)
-- [ ] T002 [P] Create class library `src/Pdp.ControlPlane.Ipam/Pdp.ControlPlane.Ipam.csproj`
+- [X] T002 [P] Create class library `src/Pdp.ControlPlane.Ipam/Pdp.ControlPlane.Ipam.csproj`
       (`net10.0`) with package refs: `Npgsql.EntityFrameworkCore.PostgreSQL`,
       `EFCore.NamingConventions`, `Microsoft.EntityFrameworkCore.Design`; add to `Pdp.sln`
-- [ ] T003 [P] Create test project
+- [X] T003 [P] Create test project
       `tests/Pdp.ControlPlane.Ipam.Tests/Pdp.ControlPlane.Ipam.Tests.csproj` (xUnit +
       `Testcontainers.PostgreSql`, `Respawn`, `Shouldly`, `NSubstitute`,
       `Microsoft.EntityFrameworkCore`) referencing the library; add to `Pdp.sln`
-- [ ] T004 Scaffold the `infra/control-plane/` OpenTofu stack: `versions.tf`
+- [X] T004 Scaffold the `infra/control-plane/` OpenTofu stack: `versions.tf`
       (`required_version "~> 1.11.0"`, `azurerm "~> 4.77.0"`, `storage_use_azuread = true`,
       `features {}`), `backend.tf` (PDP backend, key `platform/control-plane`,
       `use_azuread_auth = true`), `variables.tf`, `outputs.tf` (stubs that keep
       `tofu validate` green until T011)
-- [ ] T005 [P] Create `.github/workflows/dotnet.yml`: `dotnet build` + `dotnet test` on PRs
+- [X] T005 [P] Create `.github/workflows/dotnet.yml`: `dotnet build` + `dotnet test` on PRs
       touching `src/**`, `tests/**`, or `*.sln`; SDK from `global.json`; Docker available for
       Testcontainers; runs on Node-free .NET runner
 
@@ -147,7 +147,9 @@ reclaims (SC-001, SC-002, SC-003, SC-004).
       zero double-allocation (write first — must fail)
 - [ ] T020 [P] [US2] Integration test `…/AllocateReleaseTests.cs`: allocate returns a valid
       block durably; repeat with same name → same block; name-conflict (different size)
-      rejected; release reclaims space; release-unknown is a clean no-op (write first — fail)
+      rejected; allocate against an **unregistered region → `RegionNotRegistered`** (FR-012);
+      release reclaims space; release-unknown is a clean no-op; **releasing a reservation
+      (e.g. `control-plane-vnet`) → `CannotReleaseReservation`** (contract) (write first — fail)
 - [ ] T021 [US2] Implement the allocator in `src/Pdp.ControlPlane.Ipam/Allocator/` —
       first-fit lowest aligned free block within `supernet − (hub_carveout + existing
       allocations)`, respecting requested-prefix alignment; deterministic (depends on T006)

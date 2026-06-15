@@ -327,8 +327,13 @@ appears as allocated.
   hard-code East US 2 — later regions register through the same operation.
 - **Addressing plan (ratified — `/speckit-clarify` session 2026-06-15)**:
   - Private RFC 1918 space `10.0.0.0/8` partitioned into one **`/16` supernet per region**
-    (2nd octet = region index; ~256 regions), with the region→supernet mapping recorded in
-    the ledger. East US 2 is the first registered region.
+    (2nd octet = region index), with the region→supernet mapping recorded in the ledger.
+    **Region index 0 (`10.0.0.0/16`) is reserved for platform-shared infrastructure** (the
+    control-plane VNet — see Key Entities / plan §Constitution Check note); geographic regions
+    use indices **1–255**. East US 2 is the first registered geographic region. The specific
+    region→index assignment is operator-supplied at `register_region` time; a canonical
+    region→index registry is deferred (a spec-003 concern) — for now the ledger's
+    supernet-overlap refusal and idempotent registration prevent collisions.
   - A fixed **hub carve-out** of **`/22`** (1024 addresses) reserved at the **top** of each
     regional `/16` (e.g. `10.R.252.0/22`), held for hub subnets (egress/firewall,
     management/bastion, gateway, DNS resolver, shared services) and never allocatable to a
@@ -348,6 +353,15 @@ appears as allocated.
   is the action-layer spec (#6). This spec's operations are exercised directly (and by tests)
   against the database; the operational interface contract is defined so the action layer can
   wrap it unchanged.
+- **Live-ledger application boundary**: this spec **deploys the empty private control-plane
+  database** (US1) with the `BTREE_GIST` extension allow-listed, and **authors + proves the
+  schema, constraints, and allocator against a real Postgres** via Testcontainers (US2–US4,
+  FR-016). Because the deployed database is private and Entra-only, nothing in this spec
+  reaches it from CI. **Applying the schema to the live Azure database, and operating the
+  ledger against it, binds to spec 006** (the action-layer runtime runs inside the VNet). US1
+  satisfies "the database exists"; the production ledger becomes *operable* in spec 006. This
+  is a scope boundary, not a deferred requirement — every FR is fully met here (against
+  Testcontainers for the data-layer FRs, against the deployed server for the infra FRs).
 - **IPv4 only** for the addressing scheme; IPv6 is out of scope for this spec.
 - **Cost posture**: smallest viable database SKU consistent with the durability and recovery
   requirements (Article IX); the database is expected to be inexpensive to keep running and

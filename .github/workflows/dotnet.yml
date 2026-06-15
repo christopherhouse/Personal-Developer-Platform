@@ -1,0 +1,52 @@
+name: dotnet
+
+# Build + test the platform .NET code (first landed in spec 002 — the IPAM ledger
+# library and its integration tests). Path-filtered to .NET inputs so unrelated PRs
+# (docs, infra-only) don't spin up the Testcontainers Postgres this suite needs.
+#
+# NOTE for T029 (branch protection): when this check is made required on `main`, a
+# path-filtered workflow reports no status on PRs that don't touch these paths, which a
+# classic required-check ruleset treats as pending and blocks merge (the same gotcha
+# iac-plan.yml documents). Resolve that interaction in T029 — e.g. a lightweight
+# always-running gate job — rather than dropping the path filter and running the heavy
+# integration suite on every PR.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "**/*.sln"
+      - "Directory.Build.props"
+      - "global.json"
+      - ".github/workflows/dotnet.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dotnet-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    # ubuntu-latest ships a working Docker daemon — Testcontainers needs it to start the
+    # real Postgres the IPAM tests run against (GiST exclusion + advisory lock can't be
+    # tested in-memory; FR-016).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Pdp.sln
+
+      - name: Build
+        run: dotnet build Pdp.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Pdp.sln -c Release --no-build --verbosity normal
