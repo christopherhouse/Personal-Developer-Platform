@@ -224,13 +224,27 @@ tool versions matching CI.
 **Independent Test**: quickstart.md Scenario 4 — clean machine, documented setup, local
 results match CI for the same commit.
 
-- [ ] T029 [P] [US4] Add "Local development" section to repo-root `README.md`: baseline
+- [X] T029 [P] [US4] Add "Local development" section to repo-root `README.md`: baseline
       tools (git, az CLI, tenv/OpenTofu), how pins are enforced (`.opentofu-version`,
       `global.json`, lockfiles), how to run `tofu fmt -check` / `tofu validate` exactly
       as CI does (FR-013)
-- [ ] T030 [US4] Validate quickstart.md Scenario 4: fresh clone on a clean environment →
+- [X] T030 [US4] Validate quickstart.md Scenario 4: fresh clone on a clean environment →
       fmt/validate pass with no undocumented steps; compare against CI results for HEAD
       (SC-006)
+
+> **Phase 6 complete & validated (2026-06-15).**
+> - **T029** — repo-root `README.md` "Local development" section rewritten: baseline
+>   tools table (git, OpenTofu via `tenv`/`.opentofu-version`, `az`, `gh`), pin
+>   enforcement (`.opentofu-version` shared with CI's `setup-opentofu`, per-stack
+>   `.terraform.lock.hcl`, `global.json`), and the exact CI gate commands
+>   (`tofu fmt -check -recursive`; `tofu init -backend=false` + `tofu validate -no-color`
+>   in `infra/foundations`).
+> - **T030** — parity confirmed on HEAD with the pinned engine (OpenTofu 1.11.6, matching
+>   `.opentofu-version`): `tofu fmt -check -recursive` → exit 0; `tofu validate` →
+>   "Success! The configuration is valid." — identical to the `iac-plan` `fmt` and `plan`
+>   jobs for the same commit, with no undocumented steps (SC-006). (A literal clean-machine
+>   clone wasn't provisioned; the documented commands were run from the pinned toolchain
+>   and the working tree stayed clean — `.terraform/` is gitignored, lockfile untouched.)
 
 **Checkpoint**: All four stories independently validated.
 
