@@ -86,45 +86,51 @@ links, and the downstream outputs.
 address traces to carve-out; one egress next-hop; no public mgmt endpoint; Resource-Graph
 discoverable; DNS shared not duplicated; all via dispatched CI).
 
-- [ ] T006 [US1] Add `infra/fabric/locals.tf` (or in `main.tf`): `local.region`,
+- [X] T006 [US1] Add `infra/fabric/locals.tf` (or in `main.tf`): `local.region`,
       `local.region_short`, `local.hub_address_space = "10.${var.region_index}.252.0/22"`,
       `local.tags = { pdp-managed="true", pdp-deployed-by="github-actions",
       pdp-fabric=var.region }`, and `data.azurerm_client_config.current`
-- [ ] T007 [US1] Fabric RG `rg-pdp-eastus2-fabric` in `infra/fabric/main.tf` with `local.tags`
+- [X] T007 [US1] Fabric RG `rg-pdp-eastus2-fabric` in `infra/fabric/main.tf` with `local.tags`
       (egress/teardown protection added in US2 — keep US1 a clean stand-up increment)
-- [ ] T008 [US1] Hub VNet via `Azure/avm-res-network-virtualnetwork/azurerm` 0.18.0:
+- [X] T008 [US1] Hub VNet via `Azure/avm-res-network-virtualnetwork/azurerm` 0.18.0:
       name `vnet-pdp-eastus2-hub`, `address_space = [local.hub_address_space]`, `subnets` map
       with reserved `name`s `AzureFirewallSubnet`/`AzureFirewallManagementSubnet`/
       `AzureBastionSubnet` at `cidrsubnet(...,4,0|1|2)` — **no** `network_security_group` or
       `route_table` on any (Azure rule, research §5)
-- [ ] T009 [P] [US1] Three Standard/Static public IPs via
+- [X] T009 [P] [US1] Three Standard/Static public IPs via
       `Azure/avm-res-network-publicipaddress/azurerm` 0.2.1: `pip-pdp-eastus2-afw`,
       `pip-pdp-eastus2-afw-mgmt`, `pip-pdp-eastus2-bas` (`sku="Standard"`,
       `allocation_method="Static"`)
-- [ ] T010 [P] [US1] Basic firewall policy via `Azure/avm-res-network-firewallpolicy/azurerm`
+- [X] T010 [P] [US1] Basic firewall policy via `Azure/avm-res-network-firewallpolicy/azurerm`
       0.3.4: `afwp-pdp-eastus2-hub`, `firewall_policy_sku = "Basic"`
-- [ ] T011 [US1] Azure Firewall (Basic) via `Azure/avm-res-network-azurefirewall/azurerm`
+- [X] T011 [US1] Azure Firewall (Basic) via `Azure/avm-res-network-azurefirewall/azurerm`
       0.4.0: `afw-pdp-eastus2-hub`, `firewall_sku_tier="Basic"`, `firewall_sku_name="AZFW_VNet"`,
       `firewall_policy_id` = T010, `ip_configurations` = data PIP + `AzureFirewallSubnet`,
       `firewall_management_ip_configuration` = mgmt PIP + `AzureFirewallManagementSubnet`
       (depends on T008, T009, T010)
-- [ ] T012 [US1] Azure Bastion (Basic) via `Azure/avm-res-network-bastionhost/azurerm` 0.9.0:
+- [X] T012 [US1] Azure Bastion (Basic) via `Azure/avm-res-network-bastionhost/azurerm` 0.9.0:
       `bas-pdp-eastus2-hub`, `sku="Basic"`, `ip_configuration{ subnet_id=AzureBastionSubnet,
       create_public_ip=false, public_ip_address_id=<pip-bas> }` (depends on T008, T009)
-- [ ] T013 [US1] Hub→shared-zone links in `infra/fabric/main.tf`:
+- [X] T013 [US1] Hub→shared-zone links in `infra/fabric/main.tf`:
       `data "azurerm_private_dns_zone"` for each shared zone (in
       `var.platform_dns_resource_group_name`) + `azurerm_private_dns_zone_virtual_network_link`
       `vnetlink-pdp-eastus2-hub-<zone>` (`registration_enabled=false`) (depends on T008 + Phase 2)
-- [ ] T014 [US1] Implement `infra/fabric/outputs.tf`: `hub_vnet_id`, `hub_vnet_name`,
+- [X] T014 [US1] Implement `infra/fabric/outputs.tf`: `hub_vnet_id`, `hub_vnet_name`,
       `hub_resource_group_name`, `hub_address_space`, `firewall_private_ip` (from T011 module
       output), `shared_dns_zone_ids` (map) — per contracts/fabric-interfaces.md §I2
-- [ ] T015 [US1] `infra/fabric/README.md`: AVM smoke-validation results (all 5 fabric modules
+- [X] T015 [US1] `infra/fabric/README.md`: AVM smoke-validation results (all 5 fabric modules
       under OpenTofu 1.11.x), the **two-Standard-PIP / mandatory mgmt-NIC** Basic-firewall note,
       cross-subscription peering-readiness note (hub side), and the Article-VI consumption note
       (carve-out from `region_index`, no allocation)
-- [ ] T016 [US1] `tofu fmt -check` + `validate` clean; run quickstart Scenarios 1–6 & 9 against
+- [X] T016 [US1] `tofu fmt -check` + `validate` clean; run quickstart Scenarios 1–6 & 9 against
       the applied stack (record outputs); confirm a **second `apply` is a no-op** (0 changes —
       the re-deploy idempotency Edge case; OpenTofu convergence, no duplicate hub)
+      — **local gate done**: `tofu fmt -check -recursive` (repo) + `tofu validate` (fabric) both
+      green under OpenTofu 1.11.6. The apply-based scenarios (1–6, 9) and the second-apply no-op
+      run via **dispatched CI on merge** (`iac-plan` on the PR is the authoritative plan,
+      `iac-apply` on merge applies) — no local apply (Article I/II). Note: a clean local `plan`
+      requires `infra/platform-dns` already applied so the `data.azurerm_private_dns_zone`
+      lookups resolve; that runs in CI.
 
 **Checkpoint**: A registered region's hub is deployed, discoverable, single-egress, private-
 management, DNS-linked — MVP complete and demoable.
