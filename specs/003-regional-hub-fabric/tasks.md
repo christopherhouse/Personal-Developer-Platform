@@ -146,12 +146,12 @@ leaves zero residue while the ledger carve-out and shared zones survive.
 `fabric-destroy` with typed confirm removes everything; carve-out + shared zones untouched;
 re-apply reuses the identical `/22`).
 
-- [ ] T017 [US2] Add `lifecycle { prevent_destroy = true }` to the fabric RG in
+- [X] T017 [US2] Add `lifecycle { prevent_destroy = true }` to the fabric RG in
       `infra/fabric/main.tf` (accidental-`tofu destroy` guard, research §7)
-- [ ] T018 [US2] Add `azurerm_management_lock` `lock-pdp-eastus2-fabric` (`CanNotDelete`) scoped
+- [X] T018 [US2] Add `azurerm_management_lock` `lock-pdp-eastus2-fabric` (`CanNotDelete`) scoped
       to the fabric RG, with a `notes` value citing the protection-removal PR (mirrors
       control-plane stack)
-- [ ] T019 [US2] Create `.github/workflows/fabric-destroy.yml` (`workflow_dispatch`, input
+- [X] T019 [US2] Create `.github/workflows/fabric-destroy.yml` (`workflow_dispatch`, input
       `destroy-confirm` must equal the region e.g. `eastus2`, concurrency group
       `tofu-fabric`, `working-directory: infra/fabric`) modeled on
       `.github/workflows/controlplane-destroy.yml` — removes the lock then destroys. In the
@@ -159,8 +159,12 @@ re-apply reuses the identical `/22`).
       teardown** (US2 acceptance scenario 4 / Edge "destroy with live peerings") is a **spec
       004/006** concern — spokes own the peering and live in their own state, so within this
       spec the destroy plan has no hub-side peerings to surface (don't assume this is covered)
-- [ ] T020 [US2] Extend `infra/fabric/README.md` with the protected-resource list + the
+- [X] T020 [US2] Extend `infra/fabric/README.md` with the protected-resource list + the
       `fabric-destroy` handoff (how to deliberately tear down), then run quickstart Scenario 7
+      — README extended (protected-resource table + two-step teardown). Scenario 7 (live
+      `plan -destroy` fails on protection → `fabric-destroy` removes everything; carve-out +
+      shared zones survive) is **apply/destroy-gated → runs via dispatched CI**, not locally
+      (Article I/II); `tofu validate` green with the guard + lock in place.
 
 **Checkpoint**: Fabric is destroyable-by-design yet guarded — US1 + US2 both demonstrable.
 

@@ -10,13 +10,33 @@
 
 # ----------------------------------------------------------------------------
 # T007 — Fabric resource group. pdp-fabric=<region> makes it (and its contents)
-# discoverable as this region's hub via Resource Graph (Article III). Teardown protection
-# (prevent_destroy + management lock) is added in US2/Phase 4 — US1 stays a clean stand-up.
+# discoverable as this region's hub via Resource Graph (Article III).
 # ----------------------------------------------------------------------------
 resource "azurerm_resource_group" "fabric" {
   name     = "rg-pdp-${local.region}-fabric"
   location = local.region
   tags     = local.tags
+
+  lifecycle {
+    # T017 / Article IV/VIII (FR-015): a hub destroy severs egress + management for the whole
+    # region and would orphan spoke peerings — high blast radius. This guard hard-fails any
+    # `tofu destroy` at plan time. The firewall/bastion are provisioned by AVM modules, so a
+    # lifecycle block cannot be injected onto those resources directly (same limitation the
+    # control-plane stack documents) — the RG-level guard + the CanNotDelete lock below is the
+    # equivalent Article-IV carve-out. Deliberate teardown removes both via the fabric-destroy
+    # workflow; removal of this guard is the reviewed protection-removal PR (README.md).
+    prevent_destroy = true
+  }
+}
+
+# T018 — Management-plane protection: blocks deletes of everything in the RG (firewall, bastion,
+# VNet, PIPs) from ANY tooling — portal, CLI, IaC. The complement to prevent_destroy, which only
+# stops `tofu destroy`. The fabric-destroy workflow removes this lock before destroying.
+resource "azurerm_management_lock" "fabric" {
+  name       = "lock-pdp-${local.region}-fabric"
+  scope      = azurerm_resource_group.fabric.id
+  lock_level = "CanNotDelete"
+  notes      = "Article IV/VIII carve-out: this region's egress + management hub. Removal only via the fabric-destroy workflow or a reviewed protection-removal PR (infra/fabric/README.md)."
 }
 
 # ----------------------------------------------------------------------------

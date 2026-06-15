@@ -116,10 +116,46 @@ Smoke-validated under **OpenTofu 1.11.6** (the `.opentofu-version` pin), 2026-06
 The resource group is a plain `azurerm` primitive — no AVM composition exists for a single
 resource group (justification per Article V).
 
+## Protected resources (Article IV/VIII carve-out — FR-015)
+
+A hub destroy severs this region's **egress + management** and would orphan spoke peerings —
+high blast radius, so the fabric is **destroyable-by-design but guarded**:
+
+| Resource | Protection |
+|---|---|
+| `rg-pdp-eastus2-fabric` | `prevent_destroy` lifecycle **and** `CanNotDelete` management lock (`lock-pdp-eastus2-fabric`) |
+| firewall / bastion / VNet / PIPs / DNS links | covered by the RG management lock (inherited) + the RG `prevent_destroy` guard — no dedicated per-resource guard |
+
+**Why the guard is on the RG, not each resource:** the firewall and bastion are provisioned by
+AVM modules, so a `lifecycle { prevent_destroy }` block cannot be injected onto those resources
+directly (the same module-internal limitation the control-plane stack documents). The RG
+`prevent_destroy` makes any `tofu destroy` **fail at plan time**, and the `CanNotDelete` lock
+blocks deletes from every plane (portal / CLI / IaC) — together the equivalent Article-IV
+carve-out.
+
+## Teardown handoff — the `fabric-destroy` workflow (SC-006/007, Scenario 7)
+
+Deliberate teardown is a single confirmed workflow, never automatic (Article VIII):
+
+1. **Protection-removal PR (reviewed):** delete the `azurerm_management_lock.fabric` resource and
+   the RG `prevent_destroy` flag from `main.tf`; plan + merge. The apply removes the lock.
+2. **Run `fabric-destroy`** (`workflow_dispatch`, `.github/workflows/fabric-destroy.yml`) and type
+   the region **`eastus2`** to confirm. It `tofu init` → `plan -destroy` (the SC-007 drill: this
+   step **fails** if step 1 hasn't merged) → `destroy`.
+
+What **survives** (correctly): the ledger **hub carve-out** `10.1.252.0/22` (a standing
+reservation in `region_pool` — no `allocation` row was ever created, FR-003) and the
+**platform-shared DNS zones** (owned by `infra/platform-dns` — only the hub *links* are removed,
+FR-014). A re-apply reuses the identical `/22` (SC-007 — no address drift).
+
+**Scope boundary:** this spec's fabric owns **no** spoke peerings (spokes own their side, in their
+own state — spec 004/006), so the destroy plan surfaces no hub-side peerings. Peering-aware
+teardown ("destroy with live peerings") is a **spec 004/006** concern, not covered here.
+
 ## CI
 
 - `iac-plan` (PR): `fmt`-check repo-wide, then `validate` + `plan` for the `fabric` stack (matrix
   entry alongside `foundations` / `control-plane` / `platform-dns`); plan rendered on the PR.
 - `iac-apply` (push to `main`): re-plan + apply, serialized in its concurrency group.
-
-<!-- US2 (Phase 4) extends this README with the protected-resource list and the fabric-destroy handoff. -->
+- `fabric-destroy` (`workflow_dispatch`): the gated teardown above — typed region confirm,
+  concurrency group `tofu-fabric` (shares the apply lock).
