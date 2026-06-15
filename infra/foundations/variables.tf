@@ -29,10 +29,10 @@ locals {
   region_short = "eus2"
 
   # Universal tags — required on every PDP-managed resource group (data-model.md §1).
-  # pdp-deployed-by is "owner" during bootstrap; flips to "github-actions" with the
-  # first CI-driven apply (US3).
+  # pdp-deployed-by flipped from "owner" (bootstrap) to "github-actions" with the first
+  # CI-driven apply (US3) — the stack is now managed by the rails, not the laptop.
   tags = {
     pdp-managed     = "true"
-    pdp-deployed-by = "owner"
+    pdp-deployed-by = "github-actions"
   }
 }
