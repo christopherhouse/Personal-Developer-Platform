@@ -116,8 +116,10 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 001-platform-foundations (branch `001-platform-foundations`).
-Current plan: specs/001-platform-foundations/plan.md — read it for technical context,
-project structure, and constitution gates. Supporting design artifacts:
-specs/001-platform-foundations/research.md, data-model.md, quickstart.md, contracts/.
+Active feature: 002-ipam-ledger (branch `002-ipam-ledger`).
+Current plan: specs/002-ipam-ledger/plan.md — read it for technical context, project
+structure, and constitution gates. Supporting design artifacts:
+specs/002-ipam-ledger/research.md, data-model.md, quickstart.md, contracts/.
+Spec 001 (platform-foundations) is complete and merged — its rails (state backend, naming/
+tags, CI plan-on-PR/apply-on-merge, branch protection) are the foundation this spec builds on.
 <!-- SPECKIT END -->
