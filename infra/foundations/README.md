@@ -94,7 +94,7 @@ show **zero** cloud credentials.
 | Resource | Protection |
 |---|---|
 | `rg-pdp-eastus2-foundations` | `CanNotDelete` management lock |
-| `stpdpeus2state<suffix>` | lock (inherited) |
+| `stpdpeus2stateokoq` | lock (inherited) |
 | `tfstate` container | lock (inherited) + `prevent_destroy` |
 | `lock-pdp-eastus2-foundations` | removable only via reviewed PR |
 
