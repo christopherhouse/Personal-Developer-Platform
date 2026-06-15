@@ -144,26 +144,26 @@ The reason the spec exists. Runs against Testcontainers — independent of US1's
 concurrent allocations distinct & non-overlapping; allocate <1s + idempotent on name; release
 reclaims (SC-001, SC-002, SC-003, SC-004).
 
-- [ ] T018 [P] [US2] Integration test `tests/Pdp.ControlPlane.Ipam.Tests/NonOverlapTests.cs`:
+- [X] T018 [P] [US2] Integration test `tests/Pdp.ControlPlane.Ipam.Tests/NonOverlapTests.cs`:
       seed a pool, allocate blocks, assert a deliberate overlapping insert is rejected by
       `allocations_no_overlap` (write first — must fail)
-- [ ] T019 [P] [US2] Integration test `…/ConcurrencyTests.cs`: ≥100 concurrent `allocate`
+- [X] T019 [P] [US2] Integration test `…/ConcurrencyTests.cs`: ≥100 concurrent `allocate`
       calls on one pool yield distinct, non-overlapping blocks (or clean `PoolExhausted`),
       zero double-allocation (write first — must fail)
-- [ ] T020 [P] [US2] Integration test `…/AllocateReleaseTests.cs`: allocate returns a valid
+- [X] T020 [P] [US2] Integration test `…/AllocateReleaseTests.cs`: allocate returns a valid
       block durably; repeat with same name → same block; name-conflict (different size)
       rejected; allocate against an **unregistered region → `RegionNotRegistered`** (FR-012);
       release reclaims space; release-unknown is a clean no-op; **releasing a reservation
       (e.g. `control-plane-vnet`) → `CannotReleaseReservation`** (contract) (write first — fail)
-- [ ] T021 [US2] Implement the allocator in `src/Pdp.ControlPlane.Ipam/Allocator/` —
+- [X] T021 [US2] Implement the allocator in `src/Pdp.ControlPlane.Ipam/Allocator/` —
       first-fit lowest aligned free block within `supernet − (hub_carveout + existing
       allocations)`, respecting requested-prefix alignment; deterministic (depends on T006)
-- [ ] T022 [US2] Implement `Allocate` and `Release` in `src/Pdp.ControlPlane.Ipam/Ledger.cs`
+- [X] T022 [US2] Implement `Allocate` and `Release` in `src/Pdp.ControlPlane.Ipam/Ledger.cs`
       (`IIpamLedger`): `BeginTransactionAsync` + `pg_advisory_xact_lock(pool)` via
       `ExecuteSqlInterpolatedAsync`, prefix validation (`/29`–`/22`), idempotent on
       `(pool,name)`, `PoolExhausted`/`AllocationNameConflict`; release = idempotent delete,
       refuse `Reservation` kind (depends on T021, T009)
-- [ ] T023 [US2] Make T018–T020 pass against Testcontainers; confirm SC-001/SC-002/SC-003/SC-004
+- [X] T023 [US2] Make T018–T020 pass against Testcontainers; confirm SC-001/SC-002/SC-003/SC-004
 
 **Checkpoint**: The non-overlap authority is proven against a real Postgres.
 
