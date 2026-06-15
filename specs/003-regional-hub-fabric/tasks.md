@@ -178,14 +178,27 @@ the backend key) — no module/code edits.
 **Independent Test**: quickstart.md Scenario **8** (`tofu plan -var region=westus3 -var
 region_index=2` yields `…-pdp-westus3-…` names and `10.2.252.0/22` with no code change).
 
-- [ ] T021 [US3] Audit `infra/fabric/` for any hardcoded `eastus2`/`1`/`10.1.…` — everything
+- [X] T021 [US3] Audit `infra/fabric/` for any hardcoded `eastus2`/`1`/`10.1.…` — everything
       MUST flow from `var.region`/`var.region_index`/`local.*`; fix any leak (the parameter
       contract of FR-016)
-- [ ] T022 [US3] Run quickstart Scenario 8: `tofu plan` a second region (e.g. `westus3`,
+      — **clean, no fixes needed**: all resource names use `${local.region}`; the hub space +
+      subnets derive from `var.region_index`. The only `eastus2` literals are variable *defaults*
+      (eastus2 convenience), comments, the region-agnostic shared-DNS RG default (correctly NOT
+      derived from region — one global RG for all fabrics), and `backend.tf` (set at init/dispatch
+      — backends can't take variables).
+- [X] T022 [US3] Run quickstart Scenario 8: `tofu plan` a second region (e.g. `westus3`,
       index 2) and confirm names/CIDRs derive correctly with zero source edits; capture the plan
-- [ ] T023 [US3] Document multi-region usage in `infra/fabric/README.md`: the backend key is
+      — derivation **proven locally via `tofu console`** (`-var region=westus3 -var region_index=2`,
+      offline with a temp local-backend override): `10.2.252.0/22`, subnets `10.2.252.0|64|128/26`,
+      names `rg/vnet/afw/bas-pdp-westus3-hub`, `pdp-fabric=westus3` — zero source edits. A full
+      `tofu plan` runs in CI (the `data.azurerm_private_dns_zone` lookups need `platform-dns`
+      applied, and westus3's `register_region` is a deploy-time prereq); captured in README T023.
+- [X] T023 [US3] Document multi-region usage in `infra/fabric/README.md`: the backend key is
       per-region (`fabrics/<region>`) and set at init/dispatch; full multi-region ergonomics are
       spec 009 (this task only proves the parameterization)
+      — added "Multi-region (FR-016)" section: the eastus2↔westus3 derivation table, the two
+      deliberately-not-derived inputs (backend key + shared-DNS RG), and the deploy-time
+      register_region prerequisite.
 
 **Checkpoint**: All three stories independently demonstrable.
 

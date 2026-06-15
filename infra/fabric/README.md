@@ -31,6 +31,35 @@ typed inputs).
 > there. The `0.0.0.0/0 → firewall_private_ip` UDR, spoke peering, and NSGs are **spec 004**, not
 > here. The fabric only exposes the next-hop.
 
+## Multi-region (FR-016) — change only `region` + `region_index`
+
+A second registered region stands up from **this same code** by changing only the two inputs —
+no module/code edits. Everything addressable and named flows from `var.region` /
+`var.region_index` / `local.*`; the audit (T021) confirms no hardcoded region/index/CIDR leaks in
+any resource body. Worked example (verified offline via `tofu console`, T022):
+
+| | `region=eastus2, region_index=1` | `region=westus3, region_index=2` |
+|---|---|---|
+| Hub address space | `10.1.252.0/22` | `10.2.252.0/22` |
+| Reserved `/26`s | `…252.0` / `…252.64` / `…252.128` | same offsets in `10.2.252.x` |
+| Names | `…-pdp-eastus2-…` | `…-pdp-westus3-…` |
+| `pdp-fabric` tag | `eastus2` | `westus3` |
+
+Two things are **deliberately not** derived from `var.region`:
+
+- **The state backend key** (`backend.tf`: `fabrics/eastus2`). OpenTofu backends can't take
+  variables, so the per-region key is set at **init / dispatch** (e.g.
+  `tofu init -backend-config="key=fabrics/westus3"`). The backend RG/account are the single
+  region-agnostic spec-001 backend. Full multi-region dispatch ergonomics (a region matrix /
+  per-region keys wired into CI) are **spec 009** — this stack only proves the parameterization.
+- **`platform_dns_resource_group_name`** (default `rg-pdp-eastus2-dns`). The platform-shared DNS
+  zones are **global and created once** (`infra/platform-dns`); *every* region's hub links to the
+  **same** RG, so this input is intentionally region-agnostic, not derived from `var.region`.
+
+> Prerequisite (deploy-time, not code): the target region must be **registered in the ledger**
+> (`register_region`, giving it its `region_index`) before a meaningful apply — the control plane
+> (spec 006) enforces this pre-dispatch; the IaC trusts its typed `region_index` (Article VI).
+
 ## Egress — Azure Firewall **Basic**: two Standard PIPs + a mandatory management NIC
 
 The region's single controlled egress (Article VII) is an Azure Firewall **Basic**
