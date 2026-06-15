@@ -109,13 +109,13 @@ plan is a no-op, PDP account config verified via `az storage account show`.
       (identifiers, zero-remediation rule, container-RBAC requirement), partial-failure
       restart guidance, both failure domains (seed lost / PDP backend lost), protected
       -resource enumeration, AVM module-adoption note (research.md §1, §4, §5)
-- [ ] T014 [US1] Execute bootstrap: `tofu init` (seed backend), review plan (creates
+- [X] T014 [US1] Execute bootstrap: `tofu init` (seed backend), review plan (creates
       only — zero changes to `RG-TF`/`cmhtfstatesa`), `tofu apply`; verify
       `pdp/foundations` blob in the seed container and the PDP account's contract
       config (`allowSharedKeyAccess: false`, versioning, 30d soft delete)
 - [X] T015 [P] [US1] Commit `infra/foundations/.terraform.lock.hcl` (FR-006 pin
       mechanics)
-- [ ] T016 [US1] Validate quickstart.md Scenario 1: re-run `tofu plan` → no changes
+- [X] T016 [US1] Validate quickstart.md Scenario 1: re-run `tofu plan` → no changes
       (idempotency); seed-dependency + failure domains documented in README (SC-001)
 
 **Checkpoint**: PDP backend live and protected; foundations anchored in the seed — MVP
