@@ -81,9 +81,74 @@ resource "azurerm_management_lock" "foundations" {
 }
 
 # Owner data-plane access to PDP state (FR-012: Entra RBAC, no keys).
-# CI identity assignments arrive with US3 (T020).
 resource "azurerm_role_assignment" "owner_state_blob" {
   scope                = module.state_storage.resource_id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = var.owner_object_id
+}
+
+# ----------------------------------------------------------------------------
+# US3 (T020): GitHub CI identity — OIDC, zero stored secrets (FR-012, research §6)
+# ----------------------------------------------------------------------------
+
+data "azurerm_client_config" "current" {}
+
+locals {
+  # ARM scope for the SEED account's tfstate container (the foundations state).
+  # Constructed by hand because the seed is an external dependency PDP never manages
+  # (data-model.md §5) — we grant CI data-plane RBAC on it but model nothing else.
+  seed_state_container_id = "/subscriptions/${var.platform_subscription_id}/resourceGroups/RG-TF/providers/Microsoft.Storage/storageAccounts/cmhtfstatesa/blobServices/default/containers/tfstate"
+}
+
+# User-assigned managed identity — no client-secret surface at all (research §6).
+resource "azurerm_user_assigned_identity" "github_ci" {
+  name                = "id-pdp-${local.region}-github-ci"
+  resource_group_name = azurerm_resource_group.foundations.name
+  location            = azurerm_resource_group.foundations.location
+  tags                = local.tags
+}
+
+# Federated credential — pull_request context (plan-only).
+resource "azurerm_federated_identity_credential" "github_pull_request" {
+  name      = "github-pull-request"
+  parent_id = azurerm_user_assigned_identity.github_ci.id
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "repo:${var.github_repository}:pull_request"
+}
+
+# Federated credential — main-branch context (apply).
+resource "azurerm_federated_identity_credential" "github_main" {
+  name      = "github-main"
+  parent_id = azurerm_user_assigned_identity.github_ci.id
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "repo:${var.github_repository}:ref:refs/heads/main"
+}
+
+# Contributor on the platform subscription — CI applies all platform-plane IaC.
+resource "azurerm_role_assignment" "ci_subscription_contributor" {
+  scope                = "/subscriptions/${var.platform_subscription_id}"
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.github_ci.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Data-plane RBAC on the PDP state container — CI reads/writes every unit's state.
+# Container ARM ID composed from the account's resource_id (the resource's own
+# resource_manager_id attribute is deprecated in azurerm 4.x).
+resource "azurerm_role_assignment" "ci_pdp_state_blob" {
+  scope                = "${module.state_storage.resource_id}/blobServices/default/containers/${azurerm_storage_container.tfstate.name}"
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.github_ci.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Data-plane RBAC on the SEED tfstate container — CI reads/writes the foundations
+# state (the only PDP blob in the seed). No management-plane rights, ever (contract).
+resource "azurerm_role_assignment" "ci_seed_state_blob" {
+  scope                = local.seed_state_container_id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_user_assigned_identity.github_ci.principal_id
+  principal_type       = "ServicePrincipal"
 }

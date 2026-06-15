@@ -1,0 +1,69 @@
+name: foundations-destroy
+
+# Article VIII: destroy is never automatic. Manual workflow_dispatch only, gated on a
+# typed confirmation matching the stack name. The destroy plan FAILS on the protected
+# resources (prevent_destroy + management lock) unless the protection-removal PR has
+# merged first (FR-004, infra/foundations/README.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      destroy-confirm:
+        description: 'Type the stack name to confirm destroy: foundations'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tofu-foundations   # shares the apply lock — no destroy during an apply
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/foundations
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Verify typed confirmation
+        if: inputs.destroy-confirm != 'foundations'
+        run: |
+          echo "::error::destroy-confirm must equal 'foundations' (got '${{ inputs.destroy-confirm }}'). Aborting."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Read OpenTofu version pin
+        id: otv
+        working-directory: ${{ github.workspace }}
+        run: echo "version=$(cat .opentofu-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ steps.otv.outputs.version }}
+          tofu_wrapper: false
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      # Shown for the record; fails here on prevent_destroy if protection is still in place.
+      - name: tofu plan -destroy
+        run: tofu plan -destroy -input=false -no-color | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu destroy
+        run: tofu destroy -input=false -no-color -auto-approve

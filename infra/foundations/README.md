@@ -43,6 +43,42 @@ interruption (e.g., RG created but storage account failed → re-apply creates t
 
 **Idempotency check**: a second `tofu plan` after apply must show no changes.
 
+## CI identity & GitHub setup (US3)
+
+The stack creates a user-assigned managed identity `id-pdp-eastus2-github-ci` with two
+GitHub OIDC federated credentials (zero stored secrets — FR-012):
+
+| Credential | Subject | Context |
+|---|---|---|
+| `github-pull-request` | `repo:christopherhouse/Personal-Developer-Platform:pull_request` | `iac-plan` (plan only) |
+| `github-main` | `repo:christopherhouse/Personal-Developer-Platform:ref:refs/heads/main` | `iac-apply` (apply) |
+
+RBAC granted to the identity: **Contributor** on the platform subscription;
+**Storage Blob Data Contributor** on the PDP state container *and* the seed `tfstate`
+container (foundations state). The repo is set in `var.github_repository` — change it
+there if the repo moves; the federated subject is case-sensitive.
+
+**Post-bootstrap handoff** (one-time, after the first `tofu apply` lands the identity):
+
+```powershell
+# 1. Read the CI variable values from the applied stack
+$cid = tofu output -raw ci_client_id
+$tid = tofu output -raw ci_tenant_id
+$sid = tofu output -raw ci_subscription_id
+
+# 2. Publish as GitHub repository VARIABLES (never secrets — FR-012)
+gh variable set AZURE_CLIENT_ID       --body $cid
+gh variable set AZURE_TENANT_ID       --body $tid
+gh variable set AZURE_SUBSCRIPTION_ID --body $sid
+
+# 3. Enforce the branch-protection ruleset (idempotent)
+./scripts/setup-branch-protection.ps1
+```
+
+After this, every change to `infra/**` rides PR → `iac-plan` → merge → `iac-apply`;
+local applies end (the bootstrap-era exception closes). Audit: `gh secret list` must
+show **zero** cloud credentials.
+
 ## Failure domains
 
 - **Seed lost/unreachable**: only this stack's state is affected; every other unit's

@@ -1,0 +1,113 @@
+name: iac-plan
+
+# PR rails (contracts/ci-workflows.md): fmt-check repo-wide, then validate + plan per
+# stack with the plan rendered on the PR. All jobs are required status checks
+# (branch-protection ruleset) — failure blocks merge (FR-010). OIDC auth, zero secrets
+# (FR-012): client/tenant/subscription IDs are plain repo variables.
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".opentofu-version"
+      - ".github/workflows/iac-plan.yml"
+
+permissions:
+  contents: read
+  id-token: write        # OIDC token issuance for azure/login + the azurerm backend
+  pull-requests: write   # sticky plan comment
+
+concurrency:
+  group: iac-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # fmt is offline and repo-wide — no cloud auth needed.
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read OpenTofu version pin
+        id: otv
+        run: echo "version=$(cat .opentofu-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ steps.otv.outputs.version }}
+          tofu_wrapper: false
+
+      - name: tofu fmt -check (repo-wide)
+        run: tofu fmt -check -recursive
+
+  plan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [foundations]   # matrix-ready; later stacks add entries here
+    defaults:
+      run:
+        working-directory: infra/${{ matrix.stack }}
+    env:
+      # azurerm backend + provider authenticate via GitHub OIDC (research §2). The OIDC
+      # token is fetched natively from ACTIONS_ID_TOKEN_REQUEST_* (id-token: write).
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read OpenTofu version pin
+        id: otv
+        working-directory: ${{ github.workspace }}
+        run: echo "version=$(cat .opentofu-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ steps.otv.outputs.version }}
+          tofu_wrapper: false
+
+      # Plain variables, not secrets (FR-012) — login still uses OIDC federation.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      - name: tofu validate
+        run: tofu validate -no-color
+
+      - name: tofu plan
+        id: plan
+        run: tofu plan -input=false -no-color -out=tfplan 2>&1 | tee plan.txt
+
+      - name: Render plan to job summary
+        if: always()
+        run: |
+          {
+            echo "## tofu plan — \`${{ matrix.stack }}\`"
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post plan to PR (sticky)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "<!-- iac-plan:${{ matrix.stack }} -->"
+            echo "## tofu plan — \`${{ matrix.stack }}\` (\`${{ steps.plan.outcome }}\`)"
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file comment.md --edit-last --create-if-none

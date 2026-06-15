@@ -16,7 +16,19 @@ output "state_container_name" {
   value       = azurerm_storage_container.tfstate.name
 }
 
-# output "ci_client_id" {
-#   description = "Client ID of the GitHub CI managed identity (plain value, not a secret)."
-#   value       = azurerm_user_assigned_identity.github_ci.client_id
-# }
+# CI variables (plain values, never secrets — FR-012). Feed these into the GitHub repo
+# variables AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID (T022).
+output "ci_client_id" {
+  description = "Client ID of the GitHub CI managed identity (plain value, not a secret) → AZURE_CLIENT_ID."
+  value       = azurerm_user_assigned_identity.github_ci.client_id
+}
+
+output "ci_tenant_id" {
+  description = "Entra tenant ID → AZURE_TENANT_ID."
+  value       = data.azurerm_client_config.current.tenant_id
+}
+
+output "ci_subscription_id" {
+  description = "Platform subscription ID → AZURE_SUBSCRIPTION_ID."
+  value       = var.platform_subscription_id
+}

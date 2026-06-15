@@ -155,7 +155,7 @@ merge, fail-red/fix-forward, with branch protection making PRs the only path.
 **Independent Test**: quickstart.md Scenario 3 — PR shows the plan, direct push
 rejected, merge applies, `gh secret list` shows zero cloud credentials.
 
-- [ ] T020 [US3] Add CI identity to `infra/foundations/main.tf`: UAMI
+- [X] T020 [US3] Add CI identity to `infra/foundations/main.tf`: UAMI
       `id-pdp-eastus2-github-ci`, federated credentials for subjects
       `repo:<owner>/<repo>:pull_request` and `repo:<owner>/<repo>:ref:refs/heads/main`,
       role assignments (Contributor on platform subscription; Storage Blob Data
@@ -165,17 +165,17 @@ rejected, merge applies, `gh secret list` shows zero cloud credentials.
       review → `apply`), then record UAMI client ID output
 - [ ] T022 [US3] Set GitHub **variables** (not secrets) via `gh variable set`:
       `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (FR-012)
-- [ ] T023 [P] [US3] Create `.github/workflows/iac-plan.yml` per
+- [X] T023 [P] [US3] Create `.github/workflows/iac-plan.yml` per
       contracts/ci-workflows.md: `pull_request` on `infra/**`, jobs: fmt-check
       (repo-wide), validate + plan per stack, plan to job summary + PR comment,
       `permissions: id-token: write`, `azure/login` OIDC, setup-opentofu reading
       `.opentofu-version`
-- [ ] T024 [P] [US3] Create `.github/workflows/iac-apply.yml` per
+- [X] T024 [P] [US3] Create `.github/workflows/iac-apply.yml` per
       contracts/ci-workflows.md: `push` to `main` on `infra/**`, re-plan fresh + apply,
       `concurrency: tofu-foundations` (no cancel-in-progress), failed-state guard step
       (FR-016: red run blocks subsequent applies until resolved), run links merged
       commit
-- [ ] T025 [P] [US3] Create `.github/workflows/foundations-destroy.yml`:
+- [X] T025 [P] [US3] Create `.github/workflows/foundations-destroy.yml`:
       `workflow_dispatch` with required `destroy-confirm` input matching the stack name,
       `tofu plan -destroy` then destroy (Article VIII typed confirmation)
 - [ ] T026 [US3] Write idempotent `scripts/setup-branch-protection.ps1` using `gh api`:
@@ -186,6 +186,20 @@ rejected, merge applies, `gh secret list` shows zero cloud credentials.
       change; `gh secret list` audit = zero cloud secrets (SC-002, SC-003, SC-005)
 - [ ] T028 [US3] Validate quickstart.md Scenario 5 (failure contract): force one failing
       apply, confirm red run + blocked follow-up + fix-forward recovery (FR-016)
+
+> **Authoring complete; execution owner-gated (2026-06-15).** All Phase 5 *code* is
+> written and `tofu validate`/`fmt` pass: T020 (CI identity in `main.tf`), T023–T025
+> (the three workflows), and the T026 script (`scripts/setup-branch-protection.ps1`).
+> The remaining steps need actions only the owner can take and were deliberately **not**
+> performed by the agent:
+> - **T021** — `tofu apply` of the CI identity. Per the constitution, applies never run
+>   on a laptop; this is the *last* bootstrap-era local apply, owner-run (see
+>   `infra/foundations/README.md`).
+> - **T022 / T026 (run) / T027 / T028** — require the GitHub repo
+>   `christopherhouse/Personal-Developer-Platform` to exist and be pushed (no remote is
+>   configured yet). Once it does: set the three `AZURE_*` repo **variables** from the
+>   T020 outputs, run the branch-protection script, then walk quickstart Scenarios 3 & 5.
+>   The README's "CI identity & GitHub setup (US3)" section has the exact commands.
 
 **Checkpoint**: All IaC changes ride the rails; zero stored secrets verified.
 

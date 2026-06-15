@@ -10,6 +10,17 @@ variable "owner_object_id" {
   default     = "2ede4c0c-360b-47f8-80b0-bdba8badea7b"
 }
 
+variable "github_repository" {
+  description = "The GitHub repository (<owner>/<repo>) whose Actions workflows authenticate via OIDC against the CI managed identity. Baked into the federated-credential subjects, so it must match the repo exactly (case-sensitive in the OIDC subject claim)."
+  type        = string
+  default     = "christopherhouse/Personal-Developer-Platform"
+
+  validation {
+    condition     = can(regex("^[^/]+/[^/]+$", var.github_repository))
+    error_message = "github_repository must be in <owner>/<repo> form."
+  }
+}
+
 locals {
   # Initial primary region (spec 001 assumption); later regions arrive with spec 009.
   region = "eastus2"

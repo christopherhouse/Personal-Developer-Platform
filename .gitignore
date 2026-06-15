@@ -3,6 +3,7 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan
 crash.log
 crash.*.log
 # Variable files may carry environment-specific values; ours carry no secrets

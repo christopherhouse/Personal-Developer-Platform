@@ -1,0 +1,86 @@
+name: iac-apply
+
+# Merge rails (contracts/ci-workflows.md): on push to main, re-plan fresh and apply that
+# plan (the PR plan is advisory — clarification Q3). Applies are serialized per stack and
+# never auto-retried/reverted (FR-016). A failed apply leaves a red run (owner notified by
+# GitHub); push-triggered applies are then blocked by the guard until the fix-forward PR
+# is merged and the owner re-runs this workflow manually (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".opentofu-version"
+      - ".github/workflows/iac-apply.yml"
+  workflow_dispatch:   # manual re-run — the acknowledged resolution after a failed apply
+
+permissions:
+  contents: read
+  id-token: write
+
+# Serialize applies for this stack; never cancel an in-flight apply (FR-016).
+concurrency:
+  group: tofu-foundations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/foundations
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # FR-016 guard: if the most recent completed apply failed, block push-triggered
+      # runs. Resolution = merge the fix-forward PR, then trigger this workflow manually
+      # (workflow_dispatch), which bypasses the guard.
+      - name: Failed-state guard
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh run list --workflow "${{ github.workflow }}" --branch main \
+            --status completed --limit 1 --json conclusion --jq '.[0].conclusion // ""')
+          if [ "$last" = "failure" ]; then
+            echo "::error::Previous apply for this stack failed. Push-triggered applies are blocked (FR-016). Merge the fix-forward PR, then re-run this workflow manually (Run workflow / workflow_dispatch) to clear it."
+            exit 1
+          fi
+
+      - name: Read OpenTofu version pin
+        id: otv
+        working-directory: ${{ github.workspace }}
+        run: echo "version=$(cat .opentofu-version)" >> "$GITHUB_OUTPUT"
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ steps.otv.outputs.version }}
+          tofu_wrapper: false
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      # Re-plan fresh, then apply exactly that plan (clarification Q3).
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -out=tfplan | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu apply
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: |
+          echo "Applied commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
