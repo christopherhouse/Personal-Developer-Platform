@@ -25,9 +25,11 @@ then `github-actions` (once CI manages the stack — tag value updates with firs
 
 **Pattern**: `<type>-pdp-<region>-<name>` — lowercase, hyphen-separated.
 
-- `<type>`: CAF abbreviation (`rg`, `st`, `id`, `vnet`, `snet`, `pip`, `afw`, `pdnsz`,
-  `ca`, `psql`, `bas`, `nsg`, `rt`, `law`…). The authoritative list is the CAF
+- `<type>`: CAF abbreviation (`rg`, `st`, `id`, `vnet`, `snet`, `pip`, `afw`,
+  `ca`, `psql`, `bas`, `nsg`, `rt`, `log`…). The authoritative list is the CAF
   abbreviations page; the conventions doc pins the subset PDP uses and grows it by PR.
+  (`log`, not the retired `law`, is current CAF; private DNS zones are named by their
+  DNS domain, not a `pdnsz` token — see `docs/conventions.md` §1.1, §1.3.)
 - `<region>`: full Azure region name (`eastus2`) in resource names.
 - `<name>`: purpose label, lowercase `[a-z0-9-]`.
 

@@ -131,13 +131,13 @@ all PDP resources conform (the seed backend is out of naming/tagging scope by de
 **Independent Test**: quickstart.md Scenario 2 — Resource Graph inventory returns the
 state RG with universal tags; created resources pass the naming check.
 
-- [ ] T017 [P] [US2] Write `docs/conventions.md` publishing the naming convention
+- [X] T017 [P] [US2] Write `docs/conventions.md` publishing the naming convention
       (pattern, pinned CAF abbreviation subset, region-short table, constrained-name
       exception, worked examples) and the tag schema (per-tag values, scope
       applicability, omission rule) from data-model.md §1–2 (FR-007, FR-008)
-- [ ] T018 [P] [US2] Add "conventions" cross-references: link `docs/conventions.md` from
+- [X] T018 [P] [US2] Add "conventions" cross-references: link `docs/conventions.md` from
       `docs/architecture.md` (Naming + Inventory sections) and repo-root `README.md`
-- [ ] T019 [US2] Validate quickstart.md Scenario 2: run the Resource Graph query
+- [X] T019 [US2] Validate quickstart.md Scenario 2: run the Resource Graph query
       (`tags['pdp-managed'] == 'true'`), confirm `rg-pdp-eastus2-foundations` returns
       with `pdp-managed` + `pdp-deployed-by` and no scope tags, and confirm the seed RG
       (`RG-TF`) is **not** returned; verify created resource names against

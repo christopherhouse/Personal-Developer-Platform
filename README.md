@@ -19,8 +19,12 @@ non-negotiable principles every change must satisfy.
 | `src/` | Control plane, `pdp` CLI, `pdp-mcp` server (.NET 10) | 006-action-layer, 007-mcp-chatops |
 | `.github/workflows/` | CI (plan on PR / apply on merge) + provisioning workflows (the execution plane) | 001, 006 |
 | `scripts/` | One-time/idempotent repo setup scripts (e.g., branch protection) | 001-platform-foundations |
-| `docs/` | Charter, architecture, tech stack, glossary, conventions | — |
+| `docs/` | Charter, architecture, tech stack, glossary, [conventions](docs/conventions.md) | — |
 | `specs/` | Spec Kit feature specs (spec → plan → tasks per feature) | — |
+
+Every PDP-managed resource follows the naming convention and tag schema published in
+[docs/conventions.md](docs/conventions.md) (`<type>-pdp-<region>-<name>`; mandatory
+`pdp-*` tags). The seed backend is owner-managed and out of that scope.
 
 ## Versioning & pins
 

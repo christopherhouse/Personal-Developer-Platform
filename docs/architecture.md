@@ -127,7 +127,9 @@ reference, see [tech-stack.md](tech-stack.md) — this doc carries the *why*.
   Resource Graph across all accessible subscriptions — not local state files.
 - Mandatory tag schema on every PDP-managed resource group (hyphenated keys):
   `pdp-managed`, `pdp-fabric` (region), `pdp-spoke`, `pdp-workload`,
-  `pdp-env`, `pdp-deployed-by`. Untagged = unmanaged = invisible to PDP.
+  `pdp-env`, `pdp-deployed-by`. Untagged = unmanaged = invisible to PDP. The
+  finalized schema (allowed values, scope applicability, omission rule) is
+  published in [conventions.md](conventions.md) §2.
 
 ## Identity & execution
 
@@ -147,8 +149,9 @@ reference, see [tech-stack.md](tech-stack.md) — this doc carries the *why*.
 
 - Cloud Adoption Framework-style abbreviations:
   `<type>-pdp-<region>-<name>` (e.g., `vnet-pdp-eastus2-hub`,
-  `rg-pdp-eastus2-fabric`). Exact convention finalized in the
-  platform-foundations spec.
+  `rg-pdp-eastus2-fabric`). The finalized convention — pinned abbreviation
+  subset, region-short table, and constrained-name exception — is published in
+  [conventions.md](conventions.md) §1.
 
 ## Open questions (to resolve in specs)
 
