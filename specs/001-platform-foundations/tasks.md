@@ -90,21 +90,21 @@ plan is a no-op, PDP account config verified via `az storage account show`.
       record result in the module-adoption note in `infra/foundations/README.md`
       (Article V; fallback to plain `azurerm_storage_account` if it fails —
       research.md §5)
-- [ ] T010 [US1] Define the PDP state backend in `infra/foundations/main.tf`:
+- [X] T010 [US1] Define the PDP state backend in `infra/foundations/main.tf`:
       `rg-pdp-eastus2-foundations` (universal tags per data-model.md §1), storage
       account `stpdpeus2state<suffix>` via the AVM module (versioning on,
       blob+container soft delete 30d, `shared_access_key_enabled = false`, TLS 1.2
       min, no public blob access, LRS), `tfstate` container, with
       `lifecycle { prevent_destroy = true }` on account + container (research.md §3–4)
-- [ ] T011 [US1] Add `CanNotDelete` management lock `lock-pdp-eastus2-foundations` on
+- [X] T011 [US1] Add `CanNotDelete` management lock `lock-pdp-eastus2-foundations` on
       the PDP state RG in `infra/foundations/main.tf` (FR-004)
-- [ ] T012 [US1] Grant data-plane RBAC in `infra/foundations/main.tf`: owner `Storage
+- [X] T012 [US1] Grant data-plane RBAC in `infra/foundations/main.tf`: owner `Storage
       Blob Data Contributor` on the PDP state container (CI identity roles arrive with
       US3/T020). Owner's seed-container data access was verified 2026-06-11 via
       `az storage container list --account-name cmhtfstatesa --auth-mode login`
       (succeeded); re-verify with the same command and document in the README that seed
       RBAC is owner-managed/out-of-band
-- [ ] T013 [US1] Write `infra/foundations/README.md`: bootstrap procedure (init against
+- [X] T013 [US1] Write `infra/foundations/README.md`: bootstrap procedure (init against
       seed → review plan: creates only → apply), seed-backend external-dependency note
       (identifiers, zero-remediation rule, container-RBAC requirement), partial-failure
       restart guidance, both failure domains (seed lost / PDP backend lost), protected
@@ -113,7 +113,7 @@ plan is a no-op, PDP account config verified via `az storage account show`.
       only — zero changes to `RG-TF`/`cmhtfstatesa`), `tofu apply`; verify
       `pdp/foundations` blob in the seed container and the PDP account's contract
       config (`allowSharedKeyAccess: false`, versioning, 30d soft delete)
-- [ ] T015 [P] [US1] Commit `infra/foundations/.terraform.lock.hcl` (FR-006 pin
+- [X] T015 [P] [US1] Commit `infra/foundations/.terraform.lock.hcl` (FR-006 pin
       mechanics)
 - [ ] T016 [US1] Validate quickstart.md Scenario 1: re-run `tofu plan` → no changes
       (idempotency); seed-dependency + failure domains documented in README (SC-001)
