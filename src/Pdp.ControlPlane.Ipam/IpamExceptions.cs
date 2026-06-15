@@ -89,3 +89,74 @@ public sealed class CannotReleaseReservationException(string region, string name
     /// <summary>The reservation's name.</summary>
     public string Name { get; } = name;
 }
+
+/// <summary>
+/// The requested region index is outside the geographic range (<c>1</c>–<c>255</c>); index
+/// <c>0</c> is reserved for the platform-shared pool (data-model §1, contract).
+/// </summary>
+public sealed class InvalidRegionIndexException(int regionIndex)
+    : IpamException($"Region index {regionIndex} is invalid; geographic regions use indices 1–255 (0 is reserved for the platform-shared pool).")
+{
+    /// <summary>The rejected region index.</summary>
+    public int RegionIndex { get; } = regionIndex;
+}
+
+/// <summary>
+/// The region is already registered with a different index — a region's <c>/16</c> is fixed at
+/// registration, so re-registering it under a new index is refused (contract). Re-registering
+/// with the <em>same</em> index is the idempotent no-op success path, not this error.
+/// </summary>
+public sealed class RegionAlreadyExistsException(string region, int existingIndex, int requestedIndex)
+    : IpamException($"Region '{region}' is already registered with index {existingIndex}; it cannot be re-registered with index {requestedIndex}.")
+{
+    /// <summary>The region whose registration conflicts.</summary>
+    public string Region { get; } = region;
+
+    /// <summary>The index the region is already registered under.</summary>
+    public int ExistingIndex { get; } = existingIndex;
+
+    /// <summary>The index the conflicting request asked for.</summary>
+    public int RequestedIndex { get; } = requestedIndex;
+}
+
+/// <summary>
+/// The requested region's <c>/16</c> supernet overlaps an already-registered region's — refused
+/// by the <c>region_pool_supernet_no_overlap</c> exclusion constraint, the database backstop
+/// for FR-011. Since each region's supernet is keyed by its index, this means the index is
+/// already taken by another region.
+/// </summary>
+public sealed class SupernetOverlapException : IpamException
+{
+    /// <summary>Creates the exception when the colliding region is known up front.</summary>
+    public SupernetOverlapException(string region, int regionIndex, string? conflictingRegion)
+        : base(Describe(region, regionIndex, conflictingRegion))
+    {
+        Region = region;
+        RegionIndex = regionIndex;
+        ConflictingRegion = conflictingRegion;
+    }
+
+    /// <summary>Creates the exception wrapping the database exclusion-constraint violation.</summary>
+    public SupernetOverlapException(string region, int regionIndex, string? conflictingRegion, Exception innerException)
+        : base(Describe(region, regionIndex, conflictingRegion), innerException)
+    {
+        Region = region;
+        RegionIndex = regionIndex;
+        ConflictingRegion = conflictingRegion;
+    }
+
+    /// <summary>The region whose registration was refused.</summary>
+    public string Region { get; }
+
+    /// <summary>The index whose <c>/16</c> collided.</summary>
+    public int RegionIndex { get; }
+
+    /// <summary>The already-registered region holding the overlapping supernet, when known.</summary>
+    public string? ConflictingRegion { get; }
+
+    private static string Describe(string region, int regionIndex, string? conflictingRegion)
+    {
+        var owner = conflictingRegion is null ? "an existing region" : $"region '{conflictingRegion}'";
+        return $"Region '{region}' index {regionIndex} maps to supernet 10.{regionIndex}.0.0/16, which overlaps {owner} (FR-011).";
+    }
+}

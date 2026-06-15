@@ -177,14 +177,14 @@ overlapping regions are refused; spokes draw only from the remainder.
 **Independent Test**: quickstart Scenario 5 — register records `10.N.0.0/16` + reserves
 `10.N.252.0/22`; carve-out never allocated to a spoke; overlapping region registration refused.
 
-- [ ] T024 [P] [US3] Integration test `…/RegionRegistrationTests.cs`: register derives
+- [X] T024 [P] [US3] Integration test `…/RegionRegistrationTests.cs`: register derives
       supernet+carve-out, reserves the carve-out non-allocatable, allocates spokes only from
       the remainder, and refuses an overlapping-supernet region (write first — must fail)
-- [ ] T025 [US3] Implement `RegisterRegion` in `Ledger.cs`: derive `supernet=10.N.0.0/16` and
+- [X] T025 [US3] Implement `RegisterRegion` in `Ledger.cs`: derive `supernet=10.N.0.0/16` and
       `hub_carveout=10.N.252.0/22` from `region_index`, validate index 1–255 (0 reserved),
       reserve the carve-out, idempotent re-register, surface `RegionAlreadyExists` /
       `SupernetOverlap` (the latter from the DB exclusion constraint) (depends on T009)
-- [ ] T026 [US3] Ensure the allocator (T021) excludes the pool's `hub_carveout` from
+- [X] T026 [US3] Ensure the allocator (T021) excludes the pool's `hub_carveout` from
       allocatable space; make T024 pass; confirm US3 acceptance scenarios
 
 **Checkpoint**: The addressing scheme is concrete; specs 003/004 can register regions.
@@ -199,10 +199,10 @@ overlapping regions are refused; spokes draw only from the remainder.
 live allocations (name/size/kind), free space; released not shown; `query_all` includes the
 platform pool + reservation (SC-005).
 
-- [ ] T027 [P] [US4] Integration test `…/QueryTests.cs`: `query` reports supernet, carve-out,
+- [X] T027 [P] [US4] Integration test `…/QueryTests.cs`: `query` reports supernet, carve-out,
       live allocations and free space; a released block disappears; `query_all` includes the
       platform pool + `control-plane-vnet` reservation (write first — must fail)
-- [ ] T028 [US4] Implement `Query`/`QueryAll` in `Ledger.cs`: read-only `RegionView`
+- [X] T028 [US4] Implement `Query`/`QueryAll` in `Ledger.cs`: read-only `RegionView`
       projection including free-space computation (pool − carve-out − live allocations); make
       T027 pass (depends on T009)
 
