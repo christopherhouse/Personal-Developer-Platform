@@ -10,6 +10,12 @@ variable "owner_object_id" {
   default     = "2ede4c0c-360b-47f8-80b0-bdba8badea7b"
 }
 
+variable "owner_principal_name" {
+  description = "UPN/principal name of the platform owner in the Entra tenant — the principal_name on the Postgres Entra administrator. Must match the directory UPN for the owner_object_id (not necessarily the public email)."
+  type        = string
+  default     = "chris.house.00@gmail.com"
+}
+
 locals {
   # Primary region for the control plane (matches the foundations stack). Later regions
   # arrive with spec 009; the control-plane DB is singular and lives in the primary region.

@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [foundations]   # matrix-ready; later stacks add entries here
+        stack: [foundations, control-plane]   # matrix-ready; later stacks add entries here
     defaults:
       run:
         working-directory: infra/${{ matrix.stack }}

@@ -5,6 +5,11 @@ name: iac-apply
 # never auto-retried/reverted (FR-016). A failed apply leaves a red run (owner notified by
 # GitHub); push-triggered applies are then blocked by the guard until the fix-forward PR
 # is merged and the owner re-runs this workflow manually (workflow_dispatch).
+#
+# Matrix-shaped across every PDP stack (matches iac-plan). Each stack applies in its own
+# concurrency group (job-level, using the matrix value) so unrelated stacks never serialize
+# against each other. A change touching one stack re-applies the others as no-ops (0 changes),
+# exactly as the plan workflow re-plans every stack on every PR.
 
 on:
   push:
@@ -19,17 +24,21 @@ permissions:
   contents: read
   id-token: write
 
-# Serialize applies for this stack; never cancel an in-flight apply (FR-016).
-concurrency:
-  group: tofu-foundations
-  cancel-in-progress: false
-
 jobs:
   apply:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [foundations, control-plane]
+    # Serialize applies per stack; never cancel an in-flight apply (FR-016). Job-level so the
+    # matrix value can key the group — top-level concurrency can't see matrix context.
+    concurrency:
+      group: tofu-${{ matrix.stack }}
+      cancel-in-progress: false
     defaults:
       run:
-        working-directory: infra/foundations
+        working-directory: infra/${{ matrix.stack }}
     env:
       ARM_USE_OIDC: "true"
       ARM_USE_AZUREAD: "true"
@@ -39,9 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # FR-016 guard: if the most recent completed apply failed, block push-triggered
-      # runs. Resolution = merge the fix-forward PR, then trigger this workflow manually
-      # (workflow_dispatch), which bypasses the guard.
+      # FR-016 guard: if the most recent completed run of this workflow failed, block
+      # push-triggered runs (conservative/workflow-wide with the matrix). Resolution = merge
+      # the fix-forward PR, then trigger this workflow manually (workflow_dispatch), which
+      # bypasses the guard.
       - name: Failed-state guard
         if: github.event_name == 'push'
         env:
@@ -50,7 +60,7 @@ jobs:
           last=$(gh run list --workflow "${{ github.workflow }}" --branch main \
             --status completed --limit 1 --json conclusion --jq '.[0].conclusion // ""')
           if [ "$last" = "failure" ]; then
-            echo "::error::Previous apply for this stack failed. Push-triggered applies are blocked (FR-016). Merge the fix-forward PR, then re-run this workflow manually (Run workflow / workflow_dispatch) to clear it."
+            echo "::error::Previous apply run failed. Push-triggered applies are blocked (FR-016). Merge the fix-forward PR, then re-run this workflow manually (Run workflow / workflow_dispatch) to clear it."
             exit 1
           fi
 
@@ -78,4 +88,4 @@ jobs:
       - name: Run traceability
         if: always()
         run: |
-          echo "Applied commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Applied stack '${{ matrix.stack }}' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"

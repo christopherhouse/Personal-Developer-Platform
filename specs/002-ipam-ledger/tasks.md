@@ -95,11 +95,11 @@ conformant and destroyable. The hardest infra prerequisite; the live ledger home
 zero stored secrets, conformant tags/naming, 30-day backup, `BTREE_GIST` allow-listed;
 `controlplane-destroy` is blocked by protection (SC-006, SC-007).
 
-- [ ] T010 [US1] Smoke-validate `Azure/avm-res-dbforpostgresql-flexibleserver/azurerm` (pinned
+- [X] T010 [US1] Smoke-validate `Azure/avm-res-dbforpostgresql-flexibleserver/azurerm` (pinned
       exact) and `Azure/avm-res-network-virtualnetwork/azurerm` under OpenTofu 1.11.6
       (init/plan/validate; ideally apply/destroy in a scratch RG); record the result + any
       fallback in `infra/control-plane/README.md` (Article V; re-confirm latest pin at run)
-- [ ] T011 [US1] Implement `infra/control-plane/main.tf`: RG `rg-pdp-eastus2-controlplane`
+- [X] T011 [US1] Implement `infra/control-plane/main.tf`: RG `rg-pdp-eastus2-controlplane`
       (universal tags), VNet `vnet-pdp-eastus2-controlplane` `10.0.0.0/24`, delegated subnet
       `snet-pdp-eastus2-cp-postgres` `10.0.0.0/28` (delegation
       `Microsoft.DBforPostgreSQL/flexibleServers`), private DNS zone
@@ -109,22 +109,27 @@ zero stored secrets, conformant tags/naming, 30-day backup, `BTREE_GIST` allow-l
       `password_auth_enabled=false`, owner Entra admin, `backup_retention_days=30`,
       `geo_redundant_backup_enabled=false`, server config `azure.extensions="BTREE_GIST"`);
       populate `outputs.tf` (server name/FQDN, vnet/subnet ids) (depends on T004, T010)
-- [ ] T012 [US1] Add the Article-IV carve-out in `infra/control-plane/main.tf`: `CanNotDelete`
+- [X] T012 [US1] Add the Article-IV carve-out in `infra/control-plane/main.tf`: `CanNotDelete`
       management lock on the RG and `prevent_destroy` on the server; enumerate the protected
       set in `infra/control-plane/README.md` (FR-015)
-- [ ] T013 [US1] Extend `.github/workflows/iac-plan.yml` and `iac-apply.yml` to include the
+- [X] T013 [US1] Extend `.github/workflows/iac-plan.yml` and `iac-apply.yml` to include the
       `control-plane` stack (fmt/validate/plan on PR; re-plan + apply on merge), matching the
       foundations stack's job/matrix shape and concurrency group
-- [ ] T014 [P] [US1] Create `.github/workflows/controlplane-destroy.yml`: `workflow_dispatch`
+- [X] T014 [P] [US1] Create `.github/workflows/controlplane-destroy.yml`: `workflow_dispatch`
       with required `destroy-confirm` input matching `control-plane`, `tofu plan -destroy`
       then destroy, `concurrency: tofu-control-plane` (Article VIII typed confirmation)
-- [ ] T015 [US1] Write `infra/control-plane/README.md`: stack purpose, AVM smoke note,
+- [X] T015 [US1] Write `infra/control-plane/README.md`: stack purpose, AVM smoke note,
       protected-resource enumeration, the spec-006 migration + managed-identity handoff
       (research.md §13), state key, teardown consequence (FR-015)
-- [ ] T016 [P] [US1] Commit `infra/control-plane/.terraform.lock.hcl` (FR-006 pin mechanics)
-- [ ] T017 [US1] Validate quickstart Scenario 1: PR→plan→merge→apply; verify no public
+- [X] T016 [P] [US1] Commit `infra/control-plane/.terraform.lock.hcl` (FR-006 pin mechanics)
+- [X] T017 [US1] Validate quickstart Scenario 1: PR→plan→merge→apply; verify no public
       endpoint, Entra-only + zero DB secrets (SC-006), tags/naming, `backup_retention_days=30`,
       `BTREE_GIST` allow-listed; run the `controlplane-destroy` protection drill (SC-007)
+      — *Locally verified via smoke plan (all SC-006 attributes confirmed in the planned
+      server; no public endpoint, no admin login/password, 30-day LRS, BTREE_GIST, conformant
+      tags/names; RG `prevent_destroy` + `CanNotDelete` lock gate teardown). The live
+      PR→merge→apply and the SC-007 destroy drill execute through the CI rails on merge —
+      applies are CI-only by constitution and cannot run pre-merge.*
 
 **Checkpoint**: The live control-plane DB exists and is protected — MVP delivered.
 

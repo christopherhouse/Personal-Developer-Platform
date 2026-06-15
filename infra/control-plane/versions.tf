@@ -6,6 +6,19 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.77.0"
     }
+    # Transitive requirements of the AVM modules (VNet, private DNS zone, Postgres).
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.13"
+    }
+    modtm = {
+      source  = "Azure/modtm"
+      version = "~> 0.3"
+    }
   }
 }
 
