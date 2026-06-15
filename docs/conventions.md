@@ -77,7 +77,7 @@ each lands):
 | `ca` | Container app | 006 control plane |
 | `cae` | Container apps environment | 006 control plane |
 | `cr` | Container registry | 006 control plane |
-| `psql` | PostgreSQL (Flexible Server) | 006 control plane |
+| `psql` | PostgreSQL (Flexible Server) | 002 control-plane |
 | `kv` | Key vault | 006+ |
 | `log` ‡ | Log Analytics workspace | 006+ |
 | `appi` | Application Insights | 006+ |
@@ -131,10 +131,13 @@ stpdpeus2state8d2k
 > task T032). Until then docs use the placeholder `stpdpeus2state<suffix>`.
 
 **Private DNS zones** (`Microsoft.Network/privateDnsZones`) are a related exception: the
-resource **name is the DNS domain itself** (e.g.,
-`privatelink.postgres.database.azure.com`), as Azure private-link resolution requires.
-They do **not** take the `<type>-pdp-…` pattern; CAF likewise names them by domain. The
-RG that holds them still follows the standard convention and tag schema.
+resource **name is the DNS domain itself**, as Azure private-link resolution requires.
+The control-plane Postgres (spec **002**) deploys the Flexible-Server zone
+`pdp-controlplane.private.postgres.database.azure.com` (Flexible Server uses
+`<name>.private.postgres.database.azure.com`, *not* the private-endpoint
+`privatelink.*` form). They do **not** take the `<type>-pdp-…` pattern; CAF likewise
+names them by domain. The RG that holds them still follows the standard convention and
+tag schema.
 
 ---
 

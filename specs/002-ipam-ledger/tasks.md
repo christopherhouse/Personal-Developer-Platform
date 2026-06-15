@@ -212,12 +212,15 @@ platform pool + reservation (SC-005).
 
 ## Phase 7: Polish & Cross-Cutting
 
-- [ ] T029 [P] Update `scripts/setup-branch-protection.ps1` to also require the `dotnet`
+- [X] T029 [P] Update `scripts/setup-branch-protection.ps1` to also require the `dotnet`
       check and the control-plane `plan` check on `main`; run it (idempotent)
-- [ ] T030 [P] Update `docs/conventions.md`: note the control-plane DB (`psql`) arrives in
+      — *Script + `dotnet.yml` always-running gate job done; broken idempotency lookup fixed;
+      ruleset applied — `main` now requires `fmt`, `plan (foundations)`, `plan (control-plane)`,
+      `dotnet` (verified via the rulesets API).*
+- [X] T030 [P] Update `docs/conventions.md`: note the control-plane DB (`psql`) arrives in
       spec **002** (abbreviation already pinned, "used-by" was 006); confirm the postgres
       private-DNS-zone example is present
-- [ ] T031 Run the full quickstart (Scenarios 2–7) via `dotnet test`; confirm
+- [X] T031 Run the full quickstart (Scenarios 2–7) via `dotnet test`; confirm
       SC-001…SC-005 and SC-008 (operations cover specs 003/004 with no schema/scheme change);
       record results in a Phase-7 note
 
