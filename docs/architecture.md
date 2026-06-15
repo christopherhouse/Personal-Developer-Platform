@@ -167,4 +167,7 @@ reference, see [tech-stack.md](tech-stack.md) — this doc carries the *why*.
 *Resolved since first draft:* IPAM registry format (→ Postgres ledger, not
 file-based); how ad-hoc applies reconcile with git (→ there are no ad-hoc
 applies; everything executes via dispatched workflows, and no per-env records
-are committed).
+are committed); version-pin mechanics (→ `.opentofu-version`, `global.json`, and
+per-stack `.terraform.lock.hcl`, enforced identically in CI and local dev — spec
+`001-platform-foundations`); the naming convention and tag schema (→ finalized
+and published in [conventions.md](conventions.md), spec `001-platform-foundations`).

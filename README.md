@@ -45,6 +45,51 @@ secrets are stored anywhere in this repo or its CI.
 
 ## Local development
 
-Documented as part of spec 001 (US4): required tooling, pin enforcement, and how to run
-`tofu fmt -check` / `tofu validate` exactly as CI does. See
-`infra/foundations/README.md` once the foundations stack lands.
+A fresh clone reaches passing local `fmt`/`validate` with the **same tool versions CI
+uses** and no undocumented steps (spec 001, US4 / FR-013). The goal is parity: what
+passes here passes in `iac-plan`, for the same commit.
+
+### Baseline tools
+
+| Tool | Why | Notes |
+|---|---|---|
+| `git` | clone the repo | — |
+| **OpenTofu** | the only IaC engine | install the exact version in [`.opentofu-version`](.opentofu-version) (currently `1.11.6`). [`tenv`](https://github.com/tofuutils/tenv) reads that file and auto-selects it (`tenv tofu install`); a manual install of the same version works too. |
+| **Azure CLI** (`az`) | backend auth + read-only queries | `az login` (owner context). Needed only for commands that touch the backend (`tofu init` against the seed, `tofu plan`) — **not** for `fmt` or offline `validate`. |
+| **GitHub CLI** (`gh`) | PRs, repo variables, branch protection | optional for IaC checks; used by the setup scripts. |
+
+> .NET 10 (pinned in [`global.json`](global.json)) is only needed from spec 006 onward
+> (control plane / CLI / MCP) — not for the foundations IaC checks below.
+
+### How pins are enforced
+
+- **OpenTofu engine** → [`.opentofu-version`](.opentofu-version). CI's `setup-opentofu`
+  reads this same file (`tofu_version_file: .opentofu-version`), so local and CI run
+  byte-identical engines. Use `tenv` locally to honor it automatically.
+- **Providers & modules** → committed `.terraform.lock.hcl` per stack (e.g.
+  [`infra/foundations/.terraform.lock.hcl`](infra/foundations/.terraform.lock.hcl)).
+  `tofu init` installs the exact locked builds; version bumps are deliberate, reviewable
+  PR diffs.
+- **.NET SDK** → [`global.json`](global.json) (`rollForward: latestFeature`), consumed
+  from spec 006.
+
+### Run the checks exactly as CI does
+
+CI (`.github/workflows/iac-plan.yml`) runs two gates. Reproduce them locally:
+
+```powershell
+# 1. Format check — repo-wide, offline, no cloud auth (mirrors the CI `fmt` job)
+tofu fmt -check -recursive
+
+# 2. Validate — per stack (mirrors the CI `plan` job's init + validate steps)
+cd infra/foundations
+tofu init -backend=false -input=false   # install locked providers/modules; no cloud access
+tofu validate -no-color
+```
+
+`-backend=false` lets `validate` run without backend credentials and yields the same
+result CI produces after its full OIDC-authenticated `init`. To go further and see a
+plan (as the PR does), run `az login` first, then `tofu init` (no `-backend=false`)
+against the seed backend followed by `tofu plan` — see
+[`infra/foundations/README.md`](infra/foundations/README.md). `tofu apply` never runs
+locally outside the one-time bootstrap; all applies ride the CI rails.

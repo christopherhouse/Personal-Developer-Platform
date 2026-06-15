@@ -7,7 +7,7 @@ Two backends, distinct roles. Breaking this contract is an architecture change.
 | Backend | Account | Holds | Managed by |
 |---|---|---|---|
 | **Seed** | `cmhtfstatesa` / `RG-TF` / sub `8bd05b2f-62c5-4def-9869-f0617ebb3970` | Exactly one PDP state: `pdp/foundations` | The owner (external dependency — PDP never imports, tags, remediates, or destroys it) |
-| **PDP** | `stpdpeus2state<suffix>` / `rg-pdp-eastus2-foundations` (created by the foundations stack) | State for every other deployable unit per the key registry (data-model.md §3) | The foundations stack (protected per the Article IV carve-out) |
+| **PDP** | `stpdpeus2stateokoq` / `rg-pdp-eastus2-foundations` (created by the foundations stack) | State for every other deployable unit per the key registry (data-model.md §3) | The foundations stack (protected per the Article IV carve-out) |
 
 ## Foundations stack backend block (seed)
 
@@ -29,7 +29,7 @@ terraform {
 terraform {
   backend "azurerm" {
     resource_group_name  = "rg-pdp-eastus2-foundations"
-    storage_account_name = "<stpdpeus2state-suffix>"   # output of foundations stack
+    storage_account_name = "stpdpeus2stateokoq"        # output of foundations stack
     container_name       = "tfstate"
     key                  = "<state key per registry>"  # see data-model.md §3
     use_azuread_auth     = true                        # ALWAYS — shared keys disabled

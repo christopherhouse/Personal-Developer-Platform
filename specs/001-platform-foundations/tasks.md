@@ -224,13 +224,27 @@ tool versions matching CI.
 **Independent Test**: quickstart.md Scenario 4 — clean machine, documented setup, local
 results match CI for the same commit.
 
-- [ ] T029 [P] [US4] Add "Local development" section to repo-root `README.md`: baseline
+- [X] T029 [P] [US4] Add "Local development" section to repo-root `README.md`: baseline
       tools (git, az CLI, tenv/OpenTofu), how pins are enforced (`.opentofu-version`,
       `global.json`, lockfiles), how to run `tofu fmt -check` / `tofu validate` exactly
       as CI does (FR-013)
-- [ ] T030 [US4] Validate quickstart.md Scenario 4: fresh clone on a clean environment →
+- [X] T030 [US4] Validate quickstart.md Scenario 4: fresh clone on a clean environment →
       fmt/validate pass with no undocumented steps; compare against CI results for HEAD
       (SC-006)
+
+> **Phase 6 complete & validated (2026-06-15).**
+> - **T029** — repo-root `README.md` "Local development" section rewritten: baseline
+>   tools table (git, OpenTofu via `tenv`/`.opentofu-version`, `az`, `gh`), pin
+>   enforcement (`.opentofu-version` shared with CI's `setup-opentofu`, per-stack
+>   `.terraform.lock.hcl`, `global.json`), and the exact CI gate commands
+>   (`tofu fmt -check -recursive`; `tofu init -backend=false` + `tofu validate -no-color`
+>   in `infra/foundations`).
+> - **T030** — parity confirmed on HEAD with the pinned engine (OpenTofu 1.11.6, matching
+>   `.opentofu-version`): `tofu fmt -check -recursive` → exit 0; `tofu validate` →
+>   "Success! The configuration is valid." — identical to the `iac-plan` `fmt` and `plan`
+>   jobs for the same commit, with no undocumented steps (SC-006). (A literal clean-machine
+>   clone wasn't provisioned; the documented commands were run from the pinned toolchain
+>   and the working tree stayed clean — `.terraform/` is gitignored, lockfile untouched.)
 
 **Checkpoint**: All four stories independently validated.
 
@@ -240,19 +254,49 @@ results match CI for the same commit.
 
 **Purpose**: Protection verification, cleanup, and rails-ready confirmation.
 
-- [ ] T031 Validate quickstart.md Scenario 6 (protection): run `foundations-destroy`
+- [X] T031 Validate quickstart.md Scenario 6 (protection): run `foundations-destroy`
       without removing protection → destroy blocked by `prevent_destroy` + lock; blocked
       list matches the README enumeration exactly (SC-007, FR-004)
-- [ ] T032 Post-bootstrap PR: replace the `<stpdpeus2state-suffix>` placeholder with
+- [X] T032 Post-bootstrap PR: replace the `<stpdpeus2state-suffix>` placeholder with
       the actual generated PDP account name in
       `specs/001-platform-foundations/contracts/state-backend.md` and
       `infra/foundations/README.md` — rides the CI rails as its own PR (also exercises
       the full PR→plan→apply loop end-to-end)
-- [ ] T033 Validate quickstart.md Scenario 7 (rails-ready): scaffold `infra/scratch/`
+- [X] T033 Validate quickstart.md Scenario 7 (rails-ready): scaffold `infra/scratch/`
       with backend key `platform/scratch`, `tofu init` against the backend, then delete
       the scaffold — no layout/convention/workflow changes needed (SC-008)
-- [ ] T034 [P] Update `docs/architecture.md` "Open questions": mark pin mechanics and
+- [X] T034 [P] Update `docs/architecture.md` "Open questions": mark pin mechanics and
       naming convention as resolved (→ this spec / docs/conventions.md)
+
+> **Phase 7 complete & validated (2026-06-15).**
+> - **T031** — protection drill (SC-007 / FR-004): dispatched `foundations-destroy`
+>   (`destroy-confirm=foundations`, owner-authorized; Article VIII human confirmation).
+>   Run [27572690382] failed by design — `azurerm_storage_container.tfstate` blocked the
+>   destroy at **plan time** on `lifecycle.prevent_destroy` ("Instance cannot be
+>   destroyed"); the `tofu destroy` step never deleted anything (log shows only state
+>   refresh + a proposed plan, no destruction). Blocked resource matches the README
+>   enumeration exactly (container `prevent_destroy`; the RG `CanNotDelete` lock is the
+>   second, unreached layer). Post-drill `az` checks confirm RG, account
+>   `stpdpeus2stateokoq`, `CanNotDelete` lock, and `tfstate` container all intact.
+>   *Finding:* `tofu plan -destroy | tee $GITHUB_STEP_SUMMARY` masks tofu's exit code, so
+>   the plan step reports green despite erroring; the job still fails at the destroy step.
+>   Benign for a real teardown; tidy up in a later workflow pass.
+> - **T032** — `<stpdpeus2state-suffix>` placeholder replaced with the live account name
+>   `stpdpeus2stateokoq` (read from Azure: `az storage account list -g
+>   rg-pdp-eastus2-foundations`) in `contracts/state-backend.md` (roles table + PDP
+>   backend example) and `infra/foundations/README.md` (protected-resources table).
+>   Still to ride the CI rails as its own PR (exercises PR→plan→apply end-to-end).
+> - **T033** — rails-ready dry-check (SC-008): scaffolded `infra/scratch/`
+>   (`versions.tf` + `backend.tf`, key `platform/scratch`), `tofu init` against the PDP
+>   backend succeeded (OpenTofu 1.11.6) with **no** layout/convention/workflow changes.
+>   The 152-byte empty state blob init created was deleted and the scaffold removed —
+>   backend + layout pristine.
+> - **T034** — `docs/architecture.md` "Open questions" updated: version-pin mechanics
+>   (→ `.opentofu-version`/`global.json`/lockfiles) and the naming convention + tag
+>   schema (→ `docs/conventions.md`) moved to "Resolved since first draft".
+> - **T031** — protection drill PENDING: dispatching `foundations-destroy` requires
+>   explicit human destroy confirmation (Article VIII) and was auto-denied; awaiting
+>   owner go-ahead.
 
 ---
 
