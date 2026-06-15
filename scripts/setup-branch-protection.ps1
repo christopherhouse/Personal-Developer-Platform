@@ -8,7 +8,8 @@
     OpenTofu (a github provider would drag a new provider + state in for one resource).
     Creates or updates a branch ruleset named "pdp-main-protection" that:
       - requires a pull request for every change (direct pushes to main rejected),
-      - requires the iac-plan status checks ('fmt', 'plan (foundations)') to pass,
+      - requires the CI status checks ('fmt', 'plan (foundations)', 'plan (control-plane)'
+        from iac-plan, and 'dotnet' from the .NET build/test workflow) to pass,
       - blocks force pushes (non_fast_forward) and branch deletion,
       - allows NO bypass actors (applies to the owner/admin too).
 
@@ -24,8 +25,10 @@ param(
     # <owner>/<repo>. Defaults to the repo's gh-detected remote, else the platform repo.
     [string]$Repository,
 
-    # Status-check contexts that must pass before merge (job names in iac-plan.yml).
-    [string[]]$RequiredChecks = @('fmt', 'plan (foundations)'),
+    # Status-check contexts that must pass before merge. 'fmt' + the 'plan (<stack>)' matrix
+    # legs come from iac-plan.yml; 'dotnet' is the always-running gate job in dotnet.yml
+    # (the heavy build-test job is path-filtered, so the gate is what reports on every PR).
+    [string[]]$RequiredChecks = @('fmt', 'plan (foundations)', 'plan (control-plane)', 'dotnet'),
 
     [string]$RulesetName = 'pdp-main-protection'
 )
@@ -71,8 +74,13 @@ $ruleset = [ordered]@{
 
 $payload = $ruleset | ConvertTo-Json -Depth 10
 
-# Find an existing ruleset by name (idempotency).
-$existing = gh api "repos/$Repository/rulesets" --jq "map(select(.name == \`"$RulesetName\`")) | .[0].id" 2>$null
+# Find an existing ruleset by name (idempotency). Filter in PowerShell rather than via an
+# inline jq filter — quoting the jq string across the PowerShell→gh boundary is fragile and
+# a silent failure here makes the script try to re-create an existing ruleset (HTTP 422).
+$existing = (gh api "repos/$Repository/rulesets" |
+    ConvertFrom-Json |
+    Where-Object { $_.name -eq $RulesetName } |
+    Select-Object -First 1).id
 
 if ($existing) {
     Write-Host "Updating existing ruleset (id: $existing)..."
@@ -81,6 +89,10 @@ if ($existing) {
     Write-Host "Creating ruleset..."
     $payload | gh api --method POST "repos/$Repository/rulesets" --input - | Out-Null
 }
+
+# gh is a native exe — $ErrorActionPreference doesn't catch its failures, so check explicitly
+# rather than printing a misleading "Done" over an HTTP error.
+if ($LASTEXITCODE -ne 0) { throw "gh api call failed (exit $LASTEXITCODE); ruleset not updated." }
 
 Write-Host "Done. Ruleset '$RulesetName' is active on main."
 Write-Host "Verify: gh api repos/$Repository/rulesets --jq '.[].name'"

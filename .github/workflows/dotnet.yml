@@ -1,0 +1,85 @@
+name: dotnet
+
+# Build + test the platform .NET code (first landed in spec 002 — the IPAM ledger
+# library and its integration tests).
+#
+# Required-check shape (T029): this workflow runs on EVERY PR so its required status
+# check is never left "pending" on a PR that doesn't touch .NET. The heavy Testcontainers
+# suite stays path-filtered — a `changes` job detects whether .NET inputs changed and the
+# expensive `build-test` job runs only then. A lightweight always-running `dotnet` gate
+# job summarizes the outcome (green when build-test passed OR was skipped, red only when
+# it actually failed) and is the single required check on `main`.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dotnet-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect whether this PR touches .NET inputs (the old top-level path filter, moved into
+  # a job so the workflow still triggers — and reports the required check — on every PR).
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      dotnet: ${{ steps.filter.outputs.dotnet }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect .NET-relevant changes
+        id: filter
+        run: |
+          mb=$(git merge-base '${{ github.event.pull_request.base.sha }}' '${{ github.event.pull_request.head.sha }}')
+          if git diff --name-only "$mb" '${{ github.event.pull_request.head.sha }}' \
+            | grep -Eq '^(src/|tests/|.*\.sln$|Directory\.Build\.props$|global\.json$|\.github/workflows/dotnet\.yml$)'; then
+            echo 'dotnet=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'dotnet=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  build-test:
+    needs: changes
+    if: needs.changes.outputs.dotnet == 'true'
+    # ubuntu-latest ships a working Docker daemon — Testcontainers needs it to start the
+    # real Postgres the IPAM tests run against (GiST exclusion + advisory lock can't be
+    # tested in-memory; FR-016).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Pdp.sln
+
+      - name: Build
+        run: dotnet build Pdp.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Pdp.sln -c Release --no-build --verbosity normal
+
+  # Always-running required-check gate. Because build-test is path-filtered it is skipped
+  # on non-.NET PRs; a classic required check would then sit "pending" forever and block
+  # merge. This gate always reports: green when build-test passed or was skipped, red only
+  # when it actually failed/was cancelled. Make THIS (`dotnet`) the required check on main.
+  dotnet:
+    needs: [changes, build-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify build-test outcome
+        run: |
+          result='${{ needs.build-test.result }}'
+          echo "build-test result: $result"
+          if [ "$result" = 'failure' ] || [ "$result" = 'cancelled' ]; then
+            exit 1
+          fi
