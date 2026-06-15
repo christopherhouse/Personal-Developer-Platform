@@ -62,12 +62,12 @@ everything else lands on. Rides spec-001 rails — no rail/convention changes.
 **Purpose**: The shared Private DNS zones the fabric links to MUST exist before US1's DNS-link
 task. ⚠️ Blocks the DNS-link portion of US1.
 
-- [ ] T004 Implement `infra/platform-dns/main.tf`: RG `rg-pdp-eastus2-dns` (universal tags
+- [X] T004 Implement `infra/platform-dns/main.tf`: RG `rg-pdp-eastus2-dns` (universal tags
       only — `pdp-managed`, `pdp-deployed-by`; **no** `pdp-fabric`) + three zones via
       `Azure/avm-res-network-privatednszone/azurerm` 0.5.0 —
       `privatelink.postgres.database.azure.com`, `privatelink.blob.core.windows.net`,
       `privatelink.vaultcore.azure.net` (no VNet links here — links belong to fabrics)
-- [ ] T005 [P] Implement `infra/platform-dns/outputs.tf` (`dns_resource_group_name`, a
+- [X] T005 [P] Implement `infra/platform-dns/outputs.tf` (`dns_resource_group_name`, a
       `map` of zone name → `resource_id`) and `infra/platform-dns/README.md` (ownership rule:
       **zones live here, links live in fabrics**; AVM smoke-validation result for
       privatednszone 0.5.0 under OpenTofu 1.11.x)
