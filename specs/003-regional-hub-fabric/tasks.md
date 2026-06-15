@@ -39,17 +39,17 @@ region generalization — so each is an independently demonstrable increment.
 **Purpose**: Both OpenTofu stack skeletons (validate-green stubs) and the CI matrix wiring
 everything else lands on. Rides spec-001 rails — no rail/convention changes.
 
-- [ ] T001 Scaffold `infra/platform-dns/`: `versions.tf` (`required_version "~> 1.11.0"`,
+- [X] T001 Scaffold `infra/platform-dns/`: `versions.tf` (`required_version "~> 1.11.0"`,
       `azurerm "~> 4.77.0"` + `random`/`time`/`modtm`, `storage_use_azuread = true`,
       `features {}`), `backend.tf` (PDP backend, key `platform/dns`, `use_azuread_auth = true`),
       `variables.tf` (`platform_subscription_id` default as control-plane stack),
       `outputs.tf` (stubs) — `tofu validate` green
-- [ ] T002 Scaffold `infra/fabric/`: `versions.tf` (same provider block), `backend.tf`
+- [X] T002 Scaffold `infra/fabric/`: `versions.tf` (same provider block), `backend.tf`
       (key `fabrics/eastus2`, `use_azuread_auth = true`), `variables.tf` with `region`,
       `region_index` (**`validation` block: integer 1–255**, message cites index 0 = platform
       supernet), `platform_subscription_id`, `platform_dns_resource_group_name` (default
       `rg-pdp-eastus2-dns`), `outputs.tf` (stubs) — `tofu validate` green
-- [ ] T003 [P] Add `platform-dns` and `fabric` to the stack matrix in
+- [X] T003 [P] Add `platform-dns` and `fabric` to the stack matrix in
       `.github/workflows/iac-plan.yml` and `.github/workflows/iac-apply.yml`
       (`stack: [foundations, control-plane, platform-dns, fabric]`)
 
