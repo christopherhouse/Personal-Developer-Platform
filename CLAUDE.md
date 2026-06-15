@@ -116,10 +116,16 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 002-ipam-ledger (branch `002-ipam-ledger`).
-Current plan: specs/002-ipam-ledger/plan.md — read it for technical context, project
+Active feature: 003-regional-hub-fabric (branch `003-regional-hub-fabric`).
+Current plan: specs/003-regional-hub-fabric/plan.md — read it for technical context, project
 structure, and constitution gates. Supporting design artifacts:
-specs/002-ipam-ledger/research.md, data-model.md, quickstart.md, contracts/.
-Spec 001 (platform-foundations) is complete and merged — its rails (state backend, naming/
-tags, CI plan-on-PR/apply-on-merge, branch protection) are the foundation this spec builds on.
+specs/003-regional-hub-fabric/research.md, data-model.md, quickstart.md, contracts/.
+Design decisions (clarify 2026-06-15): egress = Azure Firewall Basic SKU (+ mandatory mgmt
+NIC); management = Azure Bastion Basic SKU (Developer SKU rejected — no VNet peering); private
+DNS = platform-shared global zones (new infra/platform-dns unit), fabric links the hub only.
+Two new OpenTofu stacks (infra/fabric → state fabrics/<region>; infra/platform-dns → state
+platform/dns), additive on the spec-001 CI rails; no .NET in this spec.
+Specs 001 (foundations) and 002 (ipam-ledger) are merged — this spec consumes the state
+backend, naming/tags, CI plan-on-PR/apply-on-merge rails, and the IPAM hub carve-out
+(10.R.252.0/22) those established.
 <!-- SPECKIT END -->
