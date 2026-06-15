@@ -85,7 +85,7 @@ created greenfield with full contract config and the Article IV protection carve
 **Independent Test**: quickstart.md Scenario 1 — bootstrap completes ≤ 30 min, re-run
 plan is a no-op, PDP account config verified via `az storage account show`.
 
-- [ ] T009 [US1] Smoke-validate `Azure/avm-res-storage-storageaccount/azurerm` (pinned
+- [X] T009 [US1] Smoke-validate `Azure/avm-res-storage-storageaccount/azurerm` (pinned
       exact version) under OpenTofu 1.11.x: init/plan/apply/destroy in a scratch RG;
       record result in the module-adoption note in `infra/foundations/README.md`
       (Article V; fallback to plain `azurerm_storage_account` if it fails —

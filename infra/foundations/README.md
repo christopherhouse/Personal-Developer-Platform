@@ -70,15 +70,20 @@ confirmed destroy. Everything else (CI identity, role assignments) tears down cl
 ## Module adoption note (Article V)
 
 `Azure/avm-res-storage-storageaccount/azurerm` **0.7.2** (pinned exact) — smoke
-validation under OpenTofu 1.11.6, 2026-06-12:
+validation under OpenTofu 1.11.6:
 
-- init + plan: ✅ clean (module schema resolves; azapi-based implementation;
-  `parent_id` interface).
+- init + plan + validate (2026-06-12): ✅ clean (module schema resolves; azapi-based
+  implementation; `parent_id` interface).
 - Findings encoded above: `account_replication_type` is deprecated/ignored — use
   `account_sku_name`; secure-by-default sets `publicNetworkAccess: Disabled` +
   network ACL Deny, overridden deliberately per the Article IX exception.
-- apply + destroy: run as part of the owner-executed smoke procedure (scratch config
-  in a temp directory; creates and destroys `rg-pdp-eastus2-avmsmoke`).
+- apply + destroy (2026-06-15): ✅ full lifecycle confirmed in scratch RG
+  `rg-pdp-eastus2-avmsmoke` (temp config, local backend) — 5 resources created and
+  destroyed clean, RG verified gone. Confirmed posture on the live account:
+  `allowSharedKeyAccess=false`, `minimumTlsVersion=TLS1_2` (module default),
+  `allowBlobPublicAccess=false`, versioning + 30d soft delete. Critically, the
+  `tfstate` container provisions via the ARM plane (`storage_account_id`) **with
+  shared keys disabled** — confirming the real backend's container will create.
 
 RG, container, lock, identity, and role-assignment resources are plain `azurerm`
 primitives — no AVM composition exists for single resources (justification per
