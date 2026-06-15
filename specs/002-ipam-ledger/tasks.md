@@ -64,19 +64,19 @@ workflow everything else lands on. (`global.json` already pins the .NET SDK — 
 
 **⚠️ CRITICAL**: The schema and test harness block all data-layer stories (US2–US4).
 
-- [ ] T006 [P] Define entities in `src/Pdp.ControlPlane.Ipam/Entities/`: `RegionPool`
+- [X] T006 [P] Define entities in `src/Pdp.ControlPlane.Ipam/Entities/`: `RegionPool`
       (id, region, region_index, supernet, hub_carveout, created_at), `Allocation`
       (id, pool_id, name, network, prefix_length, kind, allocated_at), `AllocationKind` enum
       (`Spoke`, `Reservation`) per data-model.md §2–3
-- [ ] T007 Implement `src/Pdp.ControlPlane.Ipam/IpamDbContext.cs`: `UseSnakeCaseNamingConvention`,
+- [X] T007 Implement `src/Pdp.ControlPlane.Ipam/IpamDbContext.cs`: `UseSnakeCaseNamingConvention`,
       `HasPostgresExtension("btree_gist")`, `cidr` mappings (`IPNetwork` + `HasColumnType("cidr")`),
       `UNIQUE (pool_id, name)` on `allocation` (depends on T006)
-- [ ] T008 Create the initial EF Core migration in `src/Pdp.ControlPlane.Ipam/Migrations/`:
+- [X] T008 Create the initial EF Core migration in `src/Pdp.ControlPlane.Ipam/Migrations/`:
       both tables; raw-SQL `EXCLUDE USING gist` on `allocation` (`pool_id WITH =, network
       inet_ops WITH &&`) and on `region_pool.supernet`; seed the platform pool
       (`region='platform'`, index 0, `10.0.0.0/16`) and the `control-plane-vnet` reservation
       (`10.0.0.0/24`, kind `Reservation`) per data-model.md §5 (depends on T007)
-- [ ] T009 Implement the test harness in `tests/Pdp.ControlPlane.Ipam.Tests/`: `PostgresFixture`
+- [X] T009 Implement the test harness in `tests/Pdp.ControlPlane.Ipam.Tests/`: `PostgresFixture`
       (`PostgreSqlBuilder` pinned image e.g. `postgres:17-alpine`, `IAsyncLifetime`, apply
       migrations on init, expose connection string), Respawn reset (`DbAdapter.Postgres`,
       include `public`) between tests, and a pool-seeding helper (depends on T007, T008)
