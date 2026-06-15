@@ -37,7 +37,7 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # FR-016 guard: if the most recent completed apply failed, block push-triggered
       # runs. Resolution = merge the fix-forward PR, then trigger this workflow manually
@@ -54,17 +54,12 @@ jobs:
             exit 1
           fi
 
-      - name: Read OpenTofu version pin
-        id: otv
-        working-directory: ${{ github.workspace }}
-        run: echo "version=$(cat .opentofu-version)" >> "$GITHUB_OUTPUT"
-
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: ${{ steps.otv.outputs.version }}
+          tofu_version_file: .opentofu-version
           tofu_wrapper: false
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
