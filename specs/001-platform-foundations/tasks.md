@@ -161,9 +161,9 @@ rejected, merge applies, `gh secret list` shows zero cloud credentials.
       role assignments (Contributor on platform subscription; Storage Blob Data
       Contributor on **both** the seed `tfstate` container — foundations state — and
       the PDP state container) per research.md §2, §6
-- [ ] T021 [US3] Apply T020 via the bootstrap-era local flow one last time (`tofu plan`
+- [X] T021 [US3] Apply T020 via the bootstrap-era local flow one last time (`tofu plan`
       review → `apply`), then record UAMI client ID output
-- [ ] T022 [US3] Set GitHub **variables** (not secrets) via `gh variable set`:
+- [X] T022 [US3] Set GitHub **variables** (not secrets) via `gh variable set`:
       `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (FR-012)
 - [X] T023 [P] [US3] Create `.github/workflows/iac-plan.yml` per
       contracts/ci-workflows.md: `pull_request` on `infra/**`, jobs: fmt-check
@@ -178,30 +178,41 @@ rejected, merge applies, `gh secret list` shows zero cloud credentials.
 - [X] T025 [P] [US3] Create `.github/workflows/foundations-destroy.yml`:
       `workflow_dispatch` with required `destroy-confirm` input matching the stack name,
       `tofu plan -destroy` then destroy (Article VIII typed confirmation)
-- [ ] T026 [US3] Write idempotent `scripts/setup-branch-protection.ps1` using `gh api`:
+- [X] T026 [US3] Write idempotent `scripts/setup-branch-protection.ps1` using `gh api`:
       ruleset on `main` — require PR, require `iac-plan` status checks, block force
       pushes, no admin bypass (FR-014, research.md §9); run it
-- [ ] T027 [US3] Validate quickstart.md Scenario 3: PR with a tag-value change → plan
+- [X] T027 [US3] Validate quickstart.md Scenario 3: PR with a tag-value change → plan
       visible + merge-blocked until green; direct push rejected; merge → apply lands the
       change; `gh secret list` audit = zero cloud secrets (SC-002, SC-003, SC-005)
-- [ ] T028 [US3] Validate quickstart.md Scenario 5 (failure contract): force one failing
+- [X] T028 [US3] Validate quickstart.md Scenario 5 (failure contract): force one failing
       apply, confirm red run + blocked follow-up + fix-forward recovery (FR-016)
 
-> **Authoring complete; execution owner-gated (2026-06-15).** All Phase 5 *code* is
-> written and `tofu validate`/`fmt` pass: T020 (CI identity in `main.tf`), T023–T025
-> (the three workflows), and the T026 script (`scripts/setup-branch-protection.ps1`).
-> The remaining steps need actions only the owner can take and were deliberately **not**
-> performed by the agent:
-> - **T021** — `tofu apply` of the CI identity. Per the constitution, applies never run
->   on a laptop; this is the *last* bootstrap-era local apply, owner-run (see
->   `infra/foundations/README.md`).
-> - **T022 / T026 (run) / T027 / T028** — require the GitHub repo
->   `christopherhouse/Personal-Developer-Platform` to exist and be pushed (no remote is
->   configured yet). Once it does: set the three `AZURE_*` repo **variables** from the
->   T020 outputs, run the branch-protection script, then walk quickstart Scenarios 3 & 5.
->   The README's "CI identity & GitHub setup (US3)" section has the exact commands.
+> **Phase 5 complete & live-validated (2026-06-15).** All US3 tasks done and exercised
+> against the real repo `christopherhouse/Personal-Developer-Platform` and the platform
+> subscription:
+> - **T020/T021** — CI identity (UAMI + 2 federated creds + role assignments) live; the
+>   bootstrap apply was already in place and re-plan is a no-op (idempotent).
+> - **T022** — `AZURE_CLIENT_ID/TENANT_ID/SUBSCRIPTION_ID` set as repo **variables**;
+>   `gh secret list` empty (SC-005).
+> - **T026** — `pdp-main-protection` ruleset active: PR required, `fmt` + `plan
+>   (foundations)` required checks, force-push/deletion blocked, no bypass.
+> - **T027** — PR #1 (`pdp-deployed-by` owner→github-actions): plan shown on PR, direct
+>   push to main rejected, merge → `iac-apply` landed the change (verified via `az`).
+> - **T028** — FR-016 drill: deliberate failing apply → red run; fix-forward merge's
+>   auto-apply blocked by the failed-state guard; manual `workflow_dispatch` recovered to
+>   green. Final state clean.
+>
+> **Two findings raised during validation** (follow-ups, not blockers):
+> 1. *Node 20→24*: bumped to `checkout@v5` / `azure/login@v3` / `setup-opentofu@v2`
+>    ahead of GitHub's 2026-06-16 forced switch (landed via PR #2).
+> 2. *CI RBAC*: the CI identity is **Contributor**, which lacks
+>    `Microsoft.Authorization/roleAssignments/write`. Foundations' role assignments were
+>    created at bootstrap and are stable, so steady-state CI applies are fine — but CI
+>    cannot create/modify role assignments. Later specs that need CI-managed RBAC will
+>    require **User Access Administrator**/**RBAC Administrator** (or RBAC delegated with
+>    conditions) on the relevant scope. Revisit in spec 2+.
 
-**Checkpoint**: All IaC changes ride the rails; zero stored secrets verified.
+**Checkpoint**: All IaC changes ride the rails; zero stored secrets verified. ✅
 
 ---
 
