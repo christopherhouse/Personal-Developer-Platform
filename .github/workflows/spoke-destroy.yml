@@ -1,0 +1,91 @@
+name: spoke-destroy
+
+# Article VIII: destroy is never automatic — manual workflow_dispatch only, gated on a typed
+# confirmation matching the SPOKE NAME. Spokes carry NO lock and NO prevent_destroy (FR — freely
+# destroyable), so unlike fabric-destroy there is no protection-removal step. SKELETON (T006):
+# the typed-confirm gate + dual-subscription OIDC + the per-spoke backend-key init are wired here;
+# the tofu destroy body lands in T022 (US3), and MUST remove BOTH peering sides — the spoke-side
+# (target sub) and the hub-side (platform aliased provider) — so no dangling hub peering remains
+# (Article IV). Sibling spokes, the hub, and the shared DNS zones are untouched.
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Azure region of the spoke, e.g. westus3"
+        required: true
+        type: string
+        default: westus3
+      region_index:
+        description: "Registered region index (2nd octet of the /16), e.g. 2 for westus3"
+        required: true
+        type: string
+        default: "2"
+      target_subscription_id:
+        description: "Subscription the spoke lives in"
+        required: true
+        type: string
+      spoke_name:
+        description: "Spoke name to destroy, e.g. app1"
+        required: true
+        type: string
+      destroy-confirm:
+        description: "Type the spoke name to confirm destroy (must equal spoke_name)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  # Same per-spoke group as spoke-vend — a destroy never races a vend of the same spoke.
+  group: tofu-spoke-${{ inputs.spoke_name }}
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/spoke
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_region: ${{ inputs.region }}
+      TF_VAR_region_index: ${{ inputs.region_index }}
+      TF_VAR_target_subscription_id: ${{ inputs.target_subscription_id }}
+      TF_VAR_spoke_name: ${{ inputs.spoke_name }}
+    steps:
+      - name: Verify typed confirmation
+        if: inputs.destroy-confirm != inputs.spoke_name
+        run: |
+          echo "::error::destroy-confirm must equal the spoke name '${{ inputs.spoke_name }}' (got '${{ inputs.destroy-confirm }}'). Aborting."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init (per-spoke backend key)
+        run: |
+          tofu init -input=false -no-color \
+            -backend-config="key=spokes/${{ inputs.target_subscription_id }}/${{ inputs.spoke_name }}"
+
+      # TODO(T022): tofu plan -destroy (render to summary) → tofu destroy -auto-approve, passing
+      # the dispatch inputs. The destroy removes the hub-side peering via the platform aliased
+      # provider (no dangling peering — Article IV). Spokes have no lock to remove first.
+      - name: Destroy placeholder
+        run: echo "spoke-destroy skeleton — destroy body wired in T022 (US3)." >> "$GITHUB_STEP_SUMMARY"

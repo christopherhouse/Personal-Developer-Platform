@@ -88,6 +88,32 @@ It is a **PDP-specific** pin.
 retired `law`. PDP uses `log`. (data-model.md §2's draft listed `law`; corrected here as
 the authoritative pin.)
 
+### 1.1a Spoke resource names (spec 004)
+
+Spokes follow the default `<type>-pdp-<region>-<name>` pattern; the spoke's `<name>`
+segment is `spoke-<spoke_name>` for its resource group (so a Resource-Graph sweep on
+`rg-pdp-*-spoke-*` enumerates spokes) and `<spoke_name>[-<subnet>]` for the network
+resources it owns. All abbreviations used (`rg`, `vnet`, `snet`, `nsg`, `rt`) are already
+pinned in §1.1 (carried over from 003 fabric); spec 004 adds **no** new abbreviations.
+
+Worked examples (spoke `app1` in `westus3`):
+
+| Resource | Type | Name |
+|---|---|---|
+| Resource group (target sub) | `rg` | `rg-pdp-westus3-spoke-app1` |
+| Spoke VNet | `vnet` | `vnet-pdp-westus3-app1` |
+| Workload subnet | `snet` | `snet-pdp-westus3-app1-workload` |
+| Network security group | `nsg` | `nsg-pdp-westus3-app1-workload` |
+| Route table (hub egress) | `rt` | `rt-pdp-westus3-app1` |
+| Peering (spoke→hub, target sub) | — | `peer-app1-to-hub` |
+| Peering (hub→spoke, platform sub) | — | `peer-hub-to-app1` |
+| DNS zone link (per shared zone) | — | `vnetlink-pdp-westus3-app1-<zone>` |
+
+> Virtual-network peerings and Private-DNS zone links are child resources whose names are
+> scoped to their parent VNet/zone; they take the descriptive `peer-…` / `vnetlink-pdp-…`
+> forms above (the fabric already uses `vnetlink-pdp-<region>-hub-<zone>`) rather than a
+> `<type>-pdp-…` prefix.
+
 ### 1.2 Region-short table
 
 For constrained names only (§1.3). Derived by dropping the direction vowels and
@@ -179,6 +205,21 @@ pdp-deployed-by = "owner"          # → "github-actions" after the first CI app
 `pdp-deployed-by` starts at `owner` during the local bootstrap and flips to
 `github-actions` with the first CI-driven apply — the value tracks whoever last applied
 the stack.
+
+### Spoke resources (spec 004)
+
+A spoke's resource group carries the universal tags plus the `pdp-spoke` scope tag (its
+spoke name), making it discoverable as a spoke via Resource Graph:
+
+```hcl
+pdp-managed     = "true"
+pdp-deployed-by = "github-actions"   # spokes only ever vend via dispatched CI
+pdp-spoke       = "app1"             # the spoke name
+```
+
+`pdp-env` is **omitted** on spoke RGs — it is a **workload** scope tag (set when a workload
+lands in a spoke, spec 008), not a property of the spoke itself. A spoke is environment-
+agnostic; multiple workloads of different environments can share one spoke.
 
 ---
 

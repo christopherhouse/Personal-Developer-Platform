@@ -40,24 +40,24 @@ teardown, US4 region/subscription generalization — each an independently demon
 shells everything else lands on. Rides spec-001 rails — no rail/convention changes beyond the spoke
 naming/tag rows.
 
-- [ ] T001 Confirm/extend `docs/conventions.md`: spoke RG/VNet/subnet/NSG/route-table naming
+- [X] T001 Confirm/extend `docs/conventions.md`: spoke RG/VNet/subnet/NSG/route-table naming
       (`rg-pdp-<region>-spoke-<name>`, `vnet`/`snet`/`nsg`/`rt`) and the `pdp-spoke`/`pdp-env` tags;
       add any missing CAF abbreviation rows **before** use (constitution Development Workflow)
-- [ ] T002 Scaffold `infra/spoke/versions.tf`: `required_version "~> 1.11.0"`, `azurerm ~> 4.77.0`
+- [X] T002 Scaffold `infra/spoke/versions.tf`: `required_version "~> 1.11.0"`, `azurerm ~> 4.77.0`
       (+ `random`/`time`/`modtm`), `storage_use_azuread = true`; **two provider blocks** — default
       (target sub via `var.target_subscription_id`) and `alias = "platform"` (via
       `var.platform_subscription_id`)
-- [ ] T003 Scaffold `infra/spoke/backend.tf`: PDP backend, `use_azuread_auth = true`, **key set at
+- [X] T003 Scaffold `infra/spoke/backend.tf`: PDP backend, `use_azuread_auth = true`, **key set at
       init** (`spokes/<sub-id>/<spoke-name>`); document the partial-config init
-- [ ] T004 Scaffold `infra/spoke/variables.tf`: `region`, `region_index` (validation 1–255),
+- [X] T004 Scaffold `infra/spoke/variables.tf`: `region`, `region_index` (validation 1–255),
       `target_subscription_id`, `platform_subscription_id`, `spoke_name`, `spoke_cidr`
       (**validation**: inside `10.${region_index}.0.0/16`, outside `…252.0/22`), `subnets` map
       (size + delegations, sensible default), with `outputs.tf` stubs — `tofu validate` green
-- [ ] T005 [P] Create `.github/workflows/spoke-vend.yml` skeleton (`workflow_dispatch` inputs:
+- [X] T005 [P] Create `.github/workflows/spoke-vend.yml` skeleton (`workflow_dispatch` inputs:
       region, region_index, target_subscription_id, spoke_name, spoke_cidr, optional shape;
       concurrency `tofu-spoke-<name>`; OIDC into target + platform subs; init with the per-spoke
       backend key) — no apply logic yet
-- [ ] T006 [P] Create `.github/workflows/spoke-destroy.yml` skeleton (`workflow_dispatch`, typed
+- [X] T006 [P] Create `.github/workflows/spoke-destroy.yml` skeleton (`workflow_dispatch`, typed
       `destroy-confirm` = spoke name; same dual-sub OIDC) — no destroy logic yet
 
 **Checkpoint**: Stack validates empty; workflows present as dispatch shells.
