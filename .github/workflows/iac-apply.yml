@@ -6,10 +6,15 @@ name: iac-apply
 # GitHub); push-triggered applies are then blocked by the guard until the fix-forward PR
 # is merged and the owner re-runs this workflow manually (workflow_dispatch).
 #
-# Matrix-shaped across every PDP stack (matches iac-plan). Each stack applies in its own
-# concurrency group (job-level, using the matrix value) so unrelated stacks never serialize
-# against each other. A change touching one stack re-applies the others as no-ops (0 changes),
-# exactly as the plan workflow re-plans every stack on every PR.
+# TWO PHASES, because of a cross-stack ordering dependency:
+#   * Phase 1 (job `apply`): the independent stacks — foundations, control-plane, platform-dns —
+#     apply in parallel, each in its own concurrency group (unrelated stacks never serialize).
+#   * Phase 2 (job `apply-fabric`): the fabric stack, which `needs` Phase 1. The fabric reads the
+#     platform-shared Private DNS zones via `data "azurerm_private_dns_zone"` (hub→zone links),
+#     so those zones MUST already exist — i.e. `platform-dns` must have applied first. A single
+#     parallel matrix raced fabric against platform-dns and failed fabric's data lookup; gating
+#     fabric behind Phase 1 removes the race. (Spokes etc. that depend on fabric land in later
+#     specs and would extend Phase 2 / add a Phase 3.)
 
 on:
   push:
@@ -25,12 +30,15 @@ permissions:
   id-token: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Phase 1 — independent stacks, applied in parallel.
+  # ---------------------------------------------------------------------------
   apply:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        stack: [foundations, control-plane, platform-dns, fabric]
+        stack: [foundations, control-plane, platform-dns]
     # Serialize applies per stack; never cancel an in-flight apply (FR-016). Job-level so the
     # matrix value can key the group — top-level concurrency can't see matrix context.
     concurrency:
@@ -51,7 +59,8 @@ jobs:
       # FR-016 guard: if the most recent completed run of this workflow failed, block
       # push-triggered runs (conservative/workflow-wide with the matrix). Resolution = merge
       # the fix-forward PR, then trigger this workflow manually (workflow_dispatch), which
-      # bypasses the guard.
+      # bypasses the guard. Lives in Phase 1 only: Phase 2 `needs` Phase 1, so a blocked Phase 1
+      # also stops fabric; a manual dispatch skips this step and both phases run.
       - name: Failed-state guard
         if: github.event_name == 'push'
         env:
@@ -89,3 +98,51 @@ jobs:
         if: always()
         run: |
           echo "Applied stack '${{ matrix.stack }}' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Phase 2 — fabric. Gated on Phase 1 so the platform-dns zones the fabric links to exist
+  # before its `data` lookups run. If any Phase 1 stack fails, this job is skipped (fabric is
+  # never applied against an incomplete platform).
+  # ---------------------------------------------------------------------------
+  apply-fabric:
+    needs: apply
+    runs-on: ubuntu-latest
+    concurrency:
+      group: tofu-fabric   # shares the lock with fabric-destroy — no apply during a destroy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: infra/fabric
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -out=tfplan | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu apply
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: |
+          echo "Applied stack 'fabric' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
