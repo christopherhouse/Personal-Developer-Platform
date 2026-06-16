@@ -116,16 +116,20 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 003-regional-hub-fabric (branch `003-regional-hub-fabric`).
-Current plan: specs/003-regional-hub-fabric/plan.md — read it for technical context, project
-structure, and constitution gates. Supporting design artifacts:
-specs/003-regional-hub-fabric/research.md, data-model.md, quickstart.md, contracts/.
-Design decisions (clarify 2026-06-15): egress = Azure Firewall Basic SKU (+ mandatory mgmt
-NIC); management = Azure Bastion Basic SKU (Developer SKU rejected — no VNet peering); private
-DNS = platform-shared global zones (new infra/platform-dns unit), fabric links the hub only.
-Two new OpenTofu stacks (infra/fabric → state fabrics/<region>; infra/platform-dns → state
-platform/dns), additive on the spec-001 CI rails; no .NET in this spec.
-Specs 001 (foundations) and 002 (ipam-ledger) are merged — this spec consumes the state
-backend, naming/tags, CI plan-on-PR/apply-on-merge rails, and the IPAM hub carve-out
-(10.R.252.0/22) those established.
+Active feature: 004-spoke-vending (branch `004-spoke-vending`).
+Current plan: specs/004-spoke-vending/plan.md — read it for technical context, project structure,
+and constitution gates. Supporting design artifacts: specs/004-spoke-vending/research.md,
+data-model.md, quickstart.md, contracts/spoke-interfaces.md.
+Design decisions (clarify + Plan Gate G1, 2026-06-16): vend a configurable spoke VNet into any
+writable target subscription, peered both-sides to its region's hub (cross-sub, dual-subscription
+OIDC), egress via the hub firewall (0.0.0.0/0 → firewall_private_ip), an NSG on every subnet
+(Azure default rules only), DNS-linked to the shared zones; multiple spokes per subscription;
+freely destroyable (no lock, confirm-gated). Allocation: spoke_cidr is a TYPED input fitted to the
+region /16 — live by-size IPAM allocation is deferred to the spec-006 control plane (Gate G1:
+OpenTofu in CI can't reach the private ledger; allocation is a control-plane function). One new
+parameterized OpenTofu stack (infra/spoke → state spokes/<sub-id>/<spoke-name>) + spoke-vend /
+spoke-destroy dispatch workflows; no .NET in this spec.
+Platform context: the live platform is in WEST US 3 (region_index 2; migrated from eastus2 for
+Postgres capacity). Specs 001/002/003 are merged and deployed in westus3; this spec consumes the
+fabric outputs (terraform_remote_state fabrics/<region>) and the region /16 those established.
 <!-- SPECKIT END -->

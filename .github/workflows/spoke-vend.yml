@@ -1,0 +1,108 @@
+name: spoke-vend
+
+# Vend one spoke into a target subscription (Articles I/II — OpenTofu only in dispatched CI,
+# OIDC, zero stored secrets). SKELETON (T005): dispatch inputs + dual-subscription OIDC + the
+# per-spoke backend-key init are wired here; the plan→apply body lands in T017.
+#
+# Dual-subscription auth (contracts §I3): the CI identity federates into BOTH the platform
+# subscription (state account + hub-side peering + shared DNS + fabric remote state) and the
+# target subscription (the spoke RG/VNet/NSGs/route/peering). The azurerm providers (versions.tf)
+# pick their subscription from the target_subscription_id / platform_subscription_id vars; OIDC
+# itself is per-app, not per-sub, so one federated credential authenticates both as long as the
+# identity holds the roles in each (T008).
+#
+# State: one state per spoke at spokes/<target-sub-id>/<spoke-name>, set at init via partial
+# backend config (backend.tf). A re-vend of the same (sub, name) converges — no duplicate (FR-009).
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Azure region (must have a deployed fabric), e.g. westus3"
+        required: true
+        type: string
+        default: westus3
+      region_index:
+        description: "Registered region index (2nd octet of the /16), e.g. 2 for westus3"
+        required: true
+        type: string
+        default: "2"
+      target_subscription_id:
+        description: "Subscription to vend the spoke into (must be writable by the CI identity)"
+        required: true
+        type: string
+      spoke_name:
+        description: "Spoke name, unique within the target subscription ([a-z0-9-], 1–24), e.g. app1"
+        required: true
+        type: string
+      spoke_cidr:
+        description: "Spoke CIDR inside 10.<region_index>.0.0/16, outside …252.0/22, e.g. 10.2.16.0/24"
+        required: true
+        type: string
+      subnets_json:
+        description: 'Optional subnet shape as JSON map (default: single workload subnet). e.g. {"workload":{"newbits":0,"netnum":0,"delegations":[]}}'
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write          # OIDC token issuance for azure/login + the azurerm backend/providers
+
+concurrency:
+  # Per-spoke lock: serializes vend/destroy of the SAME spoke, while different spokes vend in
+  # parallel. spoke-destroy uses the same group so a destroy never races a vend of that spoke.
+  group: tofu-spoke-${{ inputs.spoke_name }}
+  cancel-in-progress: false
+
+jobs:
+  vend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/spoke
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      # Backend subscription = the platform sub (holds the state account). Spoke target/platform
+      # subs reach the providers via the TF_VAR_* below.
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Stack inputs, threaded from the dispatch (ready for plan/apply in T017).
+      TF_VAR_region: ${{ inputs.region }}
+      TF_VAR_region_index: ${{ inputs.region_index }}
+      TF_VAR_target_subscription_id: ${{ inputs.target_subscription_id }}
+      TF_VAR_spoke_name: ${{ inputs.spoke_name }}
+      TF_VAR_spoke_cidr: ${{ inputs.spoke_cidr }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Per-spoke state key via partial backend config (backend.tf omits the key).
+      - name: tofu init (per-spoke backend key)
+        run: |
+          tofu init -input=false -no-color \
+            -backend-config="key=spokes/${{ inputs.target_subscription_id }}/${{ inputs.spoke_name }}"
+
+      # Optional subnet shape → TF_VAR_subnets for the plan/apply body (T017). Empty input keeps
+      # the stack default (single workload subnet).
+      - name: Stage optional subnet shape
+        if: inputs.subnets_json != ''
+        run: echo "TF_VAR_subnets=${{ inputs.subnets_json }}" >> "$GITHUB_ENV"
+
+      # TODO(T017): tofu plan (render to job summary) → tofu apply, passing the dispatch inputs.
+      # This skeleton stops after init so the dispatch shell + auth + per-spoke state are exercised
+      # before the apply body is added.
+      - name: Plan/apply placeholder
+        run: echo "spoke-vend skeleton — plan/apply wired in T017 (US1)." >> "$GITHUB_STEP_SUMMARY"
