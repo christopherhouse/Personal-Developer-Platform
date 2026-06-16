@@ -65,6 +65,15 @@ module "vnet" {
           name = "Microsoft.DBforPostgreSQL/flexibleServers"
         }
       }]
+      # The Flexible Server auto-adds a Microsoft.Storage service endpoint to its delegated
+      # subnet on first provision (MS Learn: provides backbone connectivity to Azure Storage;
+      # "Removing this endpoint can lead to unintended consequences"). Declare it so Terraform
+      # matches Azure instead of trying to strip it. Locations are the region + its pair, as
+      # Azure assigns them.
+      service_endpoints_with_location = [{
+        service   = "Microsoft.Storage"
+        locations = [local.region, "eastus"]
+      }]
     }
   }
 
