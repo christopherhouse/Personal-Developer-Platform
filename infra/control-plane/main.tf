@@ -162,6 +162,11 @@ module "postgres" {
     }
   }
 
+  # Ensure the hub→zone link exists before the server integrates with the zone (mirrors the
+  # original design where the zone module created the link ahead of the server). The server
+  # references the zone via private_dns_zone_id but not the link resource directly.
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.controlplane]
+
   enable_telemetry = false
   tags             = local.tags
 }
