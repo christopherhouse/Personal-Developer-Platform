@@ -16,6 +16,17 @@ Candidate feature specs in proposed build order. Each row becomes a
 | 9 | **multi-region** | Second-region rollout ergonomics, hub↔hub connectivity (if any), region-aware verb behavior. | 3, 4 |
 | 10 | **observability-guardrails** | Diagnostics/log routing, Azure Policy for tag/egress enforcement, cost visibility per environment. | 3–5 |
 
+## Status
+
+- **Spec 1 (platform-foundations)** — merged.
+- **Spec 2 (ipam-ledger)** — merged.
+- **Spec 3 (regional-hub-fabric)** — implemented on branch `003-regional-hub-fabric` (US1 stand-up,
+  US2 gated teardown, US3 region generalization, + polish); pending PR/merge. Two new stacks
+  (`infra/fabric` → `fabrics/<region>`, `infra/platform-dns` → `platform/dns`) on the spec-001 CI
+  rails. **No new CAF abbreviation or region-short rows were needed** — `vnet`/`snet`/`afw`/`afwp`/
+  `pip`/`bas` were pre-pinned "for 003 fabric" in `docs/conventions.md`; reserved Azure subnet
+  names (`AzureFirewallSubnet`, etc.) bypass the naming pattern by Azure mandate.
+
 ## Notes
 
 - Specs 1–4 are the critical path to "deploy me a spoke in East US 2."

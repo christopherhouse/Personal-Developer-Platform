@@ -206,12 +206,28 @@ region_index=2` yields `…-pdp-westus3-…` names and `10.2.252.0/22` with no c
 
 ## Phase 6: Polish & cross-cutting
 
-- [ ] T024 [P] Commit all `.terraform.lock.hcl` files (both stacks) with the pinned provider
+- [X] T024 [P] Commit all `.terraform.lock.hcl` files (both stacks) with the pinned provider
       hashes (reproducible CI, spec-001 rule)
-- [ ] T025 [P] Update `docs/spec-backlog.md` note marking spec 3 in-progress/complete and
+      — both `infra/fabric` and `infra/platform-dns` locks regenerated with
+      `tofu providers lock -platform=linux_amd64 -platform=windows_amd64` (h1=2 per provider,
+      matching the control-plane gold standard) so CI on `ubuntu-latest` verifies cleanly. Both
+      tracked + committed.
+- [X] T025 [P] Update `docs/spec-backlog.md` note marking spec 3 in-progress/complete and
       confirm no new CAF abbreviation/region-short rows were needed (all pre-pinned)
+      — added a "Status" section (spec 3 implemented on branch, pending merge); confirmed
+      `vnet`/`snet`/`afw`/`afwp`/`pip`/`bas` were pre-pinned "for 003 fabric" in conventions.md
+      (no new rows).
 - [ ] T026 Full quickstart.md run end-to-end (Scenarios 1–9) on a clean apply→destroy cycle;
       record results and confirm SC-001…009 all pass
+      — ⏳ **POST-MERGE ACCEPTANCE GATE — cannot run locally** (Article I/II: no local apply, and
+      the Scenario-7 destroy drill needs the protection-removal PR). Requires: (1) East US 2
+      registered in the ledger (`register_region` index 1 — spec-006-staged deploy-time prereq),
+      (2) `platform-dns` applied so the hub DNS-link `data` lookups resolve, (3) merge →
+      `iac-apply` stands up `fabric`, then run Scenarios 1–6 & 9 + the second-apply no-op, then
+      the gated `fabric-destroy` for Scenario 7. **Statically pre-verified now**: repo `tofu fmt
+      -check -recursive` + per-stack `tofu validate` green; Scenario-8 derivation proven via
+      `tofu console` (T022); module surfaces smoke-validated under OpenTofu 1.11.6 (READMEs).
+      Leave unchecked until the live run is recorded.
 
 ---
 
