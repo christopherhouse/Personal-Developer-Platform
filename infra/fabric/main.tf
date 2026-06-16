@@ -96,6 +96,12 @@ module "pip_fw_data" {
   allocation_method = "Static"
   sku               = "Standard"
 
+  # Azure auto-applies this ip_tag to Standard PIPs attached to Firewall/Bastion. Declare it so
+  # Terraform matches reality instead of stripping it — ip_tags is immutable, so a mismatch
+  # forces PIP replacement, and the RG CanNotDelete lock then blocks the destroy. (Observed via
+  # plan against the live PIPs.)
+  ip_tags = { "FirstPartyUsage" = "/Unprivileged" }
+
   enable_telemetry = false
   tags             = local.tags
 }
@@ -111,6 +117,12 @@ module "pip_fw_mgmt" {
   allocation_method = "Static"
   sku               = "Standard"
 
+  # Azure auto-applies this ip_tag to Standard PIPs attached to Firewall/Bastion. Declare it so
+  # Terraform matches reality instead of stripping it — ip_tags is immutable, so a mismatch
+  # forces PIP replacement, and the RG CanNotDelete lock then blocks the destroy. (Observed via
+  # plan against the live PIPs.)
+  ip_tags = { "FirstPartyUsage" = "/Unprivileged" }
+
   enable_telemetry = false
   tags             = local.tags
 }
@@ -125,6 +137,12 @@ module "pip_bastion" {
 
   allocation_method = "Static"
   sku               = "Standard"
+
+  # Azure auto-applies this ip_tag to Standard PIPs attached to Firewall/Bastion. Declare it so
+  # Terraform matches reality instead of stripping it — ip_tags is immutable, so a mismatch
+  # forces PIP replacement, and the RG CanNotDelete lock then blocks the destroy. (Observed via
+  # plan against the live PIPs.)
+  ip_tags = { "FirstPartyUsage" = "/Unprivileged" }
 
   enable_telemetry = false
   tags             = local.tags
