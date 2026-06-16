@@ -8,8 +8,8 @@ locals {
   # Primary region for the platform-shared DNS resource group. The Private DNS zones
   # themselves are global; only the RG that holds them carries a location (matches the
   # foundations/control-plane stacks). Later regions reuse these same global zones.
-  region       = "eastus2"
-  region_short = "eus2"
+  region       = "westus3"
+  region_short = "wus3"
 
   # Universal tags — required on every PDP-managed resource group (data-model.md §1).
   # Platform scope: NO pdp-fabric tag (this unit is region-agnostic; zones are not a fabric).

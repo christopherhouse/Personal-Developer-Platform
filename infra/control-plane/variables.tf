@@ -16,11 +16,17 @@ variable "owner_principal_name" {
   default     = "chris.house.00@gmail.com"
 }
 
+variable "platform_dns_resource_group_name" {
+  description = "Resource group holding the platform-shared global Private DNS zones (owned by infra/platform-dns). The control-plane data-looks-up the canonical privatelink.postgres.database.azure.com zone here and links its VNet to it; it does not own the zone."
+  type        = string
+  default     = "rg-pdp-westus3-dns"
+}
+
 locals {
-  # Primary region for the control plane (matches the foundations stack). Later regions
-  # arrive with spec 009; the control-plane DB is singular and lives in the primary region.
-  region       = "eastus2"
-  region_short = "eus2"
+  # Primary region for the control plane (matches the foundations stack). Moved eastus2 →
+  # westus3 (Postgres capacity); the control-plane DB is singular and lives in the primary region.
+  region       = "westus3"
+  region_short = "wus3"
 
   # Universal tags — required on every PDP-managed resource group (data-model.md §1).
   tags = {

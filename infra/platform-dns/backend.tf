@@ -6,8 +6,8 @@
 # never pinned here (contracts/state-backend.md).
 terraform {
   backend "azurerm" {
-    resource_group_name  = "rg-pdp-eastus2-foundations"
-    storage_account_name = "stpdpeus2stateokoq"
+    resource_group_name  = "rg-pdp-westus3-foundations"
+    storage_account_name = "stpdpwus3statejqyq"
     container_name       = "tfstate"
     key                  = "platform/dns"
     use_azuread_auth     = true
