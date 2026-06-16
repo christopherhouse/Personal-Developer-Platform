@@ -69,11 +69,11 @@ naming/tag rows.
 **Purpose**: The fabric remote-state read and the dual-provider plumbing every spoke resource
 depends on. ⚠️ Blocks all of US1.
 
-- [ ] T007 Add `infra/spoke/locals.tf` + `data.terraform_remote_state.fabric` (platform provider)
+- [X] T007 Add `infra/spoke/locals.tf` + `data.terraform_remote_state.fabric` (platform provider)
       against `fabrics/${var.region}`; surface `hub_vnet_id`, `hub_resource_group_name`,
       `firewall_private_ip`, `shared_dns_zone_ids`; `local.tags = { pdp-managed, pdp-deployed-by,
       pdp-spoke=var.spoke_name }`; fail-fast if the fabric state is absent (FR-011)
-- [ ] T008 Verify the CI identity's **federated credentials cover the `spoke-vend`/`spoke-destroy`
+- [X] T008 Verify the CI identity's **federated credentials cover the `spoke-vend`/`spoke-destroy`
       dispatch context** and that it holds Contributor (target sub) + Network Contributor (hub RG)
       + Private DNS Zone Contributor (DNS RG) in the platform sub (contracts §I3) — fix the
       branch-dispatch fed-cred gap surfaced in the westus3 migration **before** first vend
