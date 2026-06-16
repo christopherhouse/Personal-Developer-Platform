@@ -107,6 +107,13 @@ module "postgres" {
   sku_name       = "B_Standard_B1ms"
   storage_mb     = 32768 # 32 GiB minimum (Article IX — smallest viable)
 
+  # The AVM module defaults high_availability to { mode = "ZoneRedundant" }, but HA is NOT
+  # supported on Burstable (B_*) SKUs — Azure rejects it with HANotSupportedForBurstableSku.
+  # A single-AZ control-plane DB is the intended posture anyway (Article IX — smallest viable;
+  # 30-day PITR covers recovery, FR-014). Explicitly disable HA. (Module doc: "When using a
+  # Burstable SKU, set high_availability to null.")
+  high_availability = null
+
   # Private access via VNet injection; no public endpoint ever (FR-002, Article IX).
   delegated_subnet_id           = module.vnet.subnets["postgres"].resource_id
   private_dns_zone_id           = module.postgres_dns.resource_id
