@@ -89,33 +89,34 @@ spoke in a target subscription from a typed CIDR.
 
 **Independent Test**: quickstart Scenarios **1, 2, 3, 4, 6, 9** against a vended `app1`.
 
-- [ ] T009 [US1] Spoke RG `rg-pdp-${region}-spoke-${spoke_name}` (target sub) in
+- [X] T009 [US1] Spoke RG `rg-pdp-${region}-spoke-${spoke_name}` (target sub) in
       `infra/spoke/main.tf` with `local.tags` (**no** lock / `prevent_destroy`)
-- [ ] T010 [US1] Spoke VNet + subnets via `Azure/avm-res-network-virtualnetwork/azurerm`:
+- [X] T010 [US1] Spoke VNet + subnets via `Azure/avm-res-network-virtualnetwork/azurerm`:
       `address_space=[var.spoke_cidr]`, `subnets` from `var.subnets` (prefixes via
       `cidrsubnet(var.spoke_cidr, …)`, delegations passthrough), each subnet associated to its NSG
       (T011) and the route table (T012)
-- [ ] T011 [P] [US1] `azurerm_network_security_group` (per subnet or one shared) `nsg-pdp-…` with
+- [X] T011 [P] [US1] `azurerm_network_security_group` (per subnet or one shared) `nsg-pdp-…` with
       **no custom rules** (Azure defaults only, FR-018); ensure **every** subnet is associated
-- [ ] T012 [P] [US1] `azurerm_route_table` `rt-pdp-${region}-${spoke_name}` with `0.0.0.0/0` →
+- [X] T012 [P] [US1] `azurerm_route_table` `rt-pdp-${region}-${spoke_name}` with `0.0.0.0/0` →
       `VirtualAppliance` next-hop `firewall_private_ip` (from T007); associate to spoke subnets;
       **no** other default route (Article VII)
-- [ ] T013 [US1] Spoke→hub peering `azurerm_virtual_network_peering` (target sub):
+- [X] T013 [US1] Spoke→hub peering `azurerm_virtual_network_peering` (target sub):
       `remote_virtual_network_id = hub_vnet_id`, `allow_forwarded_traffic = true` (depends on T010)
-- [ ] T014 [US1] Hub→spoke peering `azurerm_virtual_network_peering` via the **platform** aliased
+- [X] T014 [US1] Hub→spoke peering `azurerm_virtual_network_peering` via the **platform** aliased
       provider, on the hub VNet in `hub_resource_group_name`, `allow_forwarded_traffic = true`
       (depends on T010)
-- [ ] T015 [US1] Spoke→shared-zone links: `azurerm_private_dns_zone_virtual_network_link` (platform
+- [X] T015 [US1] Spoke→shared-zone links: `azurerm_private_dns_zone_virtual_network_link` (platform
       provider, in the DNS RG) for each entry in `shared_dns_zone_ids`,
       `vnetlink-pdp-${region}-${spoke_name}-<zone>`, `registration_enabled = false` (depends on T010)
-- [ ] T016 [US1] Implement `infra/spoke/outputs.tf`: `spoke_vnet_id`, `spoke_resource_group_name`,
+- [X] T016 [US1] Implement `infra/spoke/outputs.tf`: `spoke_vnet_id`, `spoke_resource_group_name`,
       `spoke_subnets` (map), `spoke_cidr` — per contracts §I4
-- [ ] T017 [US1] Finish `spoke-vend.yml`: `tofu init` (per-spoke key) → `plan` → `apply`; render
+- [X] T017 [US1] Finish `spoke-vend.yml`: `tofu init` (per-spoke key) → `plan` → `apply`; render
       plan; pass the dispatch inputs as `-var`s
-- [ ] T018 [US1] `infra/spoke/README.md`: AVM smoke-validation results (vnet module under OpenTofu
+- [X] T018 [US1] `infra/spoke/README.md`: AVM smoke-validation results (vnet module under OpenTofu
       1.11.x), the **typed-CIDR staging** note (Gate G1; live allocation = spec 006), the
       **dual-subscription identity** requirement (§I3), and the egress/NSG posture
-- [ ] T019 [US1] `tofu fmt -check` + `validate` clean; vend `app1` via CI and run quickstart
+- [~] T019 [US1] `tofu fmt -check` + `validate` clean ✅ (local gate passed under OpenTofu 1.11.6);
+      **remaining (live CI):** vend `app1` via the `spoke-vend` dispatch and run quickstart
       Scenarios 1–4, 6, 9; confirm a **second vend is a no-op** (idempotency, FR-009)
 
 **Checkpoint**: A spoke is vended, peered, egress-through-hub, NSG'd, DNS-linked — MVP demoable.

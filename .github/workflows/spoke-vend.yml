@@ -95,14 +95,22 @@ jobs:
           tofu init -input=false -no-color \
             -backend-config="key=spokes/${{ inputs.target_subscription_id }}/${{ inputs.spoke_name }}"
 
-      # Optional subnet shape → TF_VAR_subnets for the plan/apply body (T017). Empty input keeps
-      # the stack default (single workload subnet).
+      # Optional subnet shape → TF_VAR_subnets for the plan/apply body. Empty input keeps the
+      # stack default (single workload subnet, variables.tf).
       - name: Stage optional subnet shape
         if: inputs.subnets_json != ''
         run: echo "TF_VAR_subnets=${{ inputs.subnets_json }}" >> "$GITHUB_ENV"
 
-      # TODO(T017): tofu plan (render to job summary) → tofu apply, passing the dispatch inputs.
-      # This skeleton stops after init so the dispatch shell + auth + per-spoke state are exercised
-      # before the apply body is added.
-      - name: Plan/apply placeholder
-        run: echo "spoke-vend skeleton — plan/apply wired in T017 (US1)." >> "$GITHUB_STEP_SUMMARY"
+      # Plan fresh and apply that exact plan (the iac-apply convention). All stack inputs flow
+      # from the TF_VAR_* env above; a re-vend of the same (sub, name) converges — no duplicate
+      # (FR-009). The dual-subscription providers (versions.tf) pick their sub from the vars; the
+      # one OIDC login above authenticates both as long as the identity holds the roles (T008).
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -out=tfplan | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu apply
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: echo "Vended spoke '${{ inputs.spoke_name }}' (cidr ${{ inputs.spoke_cidr }}) into ${{ inputs.target_subscription_id }} / ${{ inputs.region }} at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"
