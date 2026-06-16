@@ -20,12 +20,17 @@ Candidate feature specs in proposed build order. Each row becomes a
 
 - **Spec 1 (platform-foundations)** — merged.
 - **Spec 2 (ipam-ledger)** — merged.
-- **Spec 3 (regional-hub-fabric)** — implemented on branch `003-regional-hub-fabric` (US1 stand-up,
-  US2 gated teardown, US3 region generalization, + polish); pending PR/merge. Two new stacks
-  (`infra/fabric` → `fabrics/<region>`, `infra/platform-dns` → `platform/dns`) on the spec-001 CI
-  rails. **No new CAF abbreviation or region-short rows were needed** — `vnet`/`snet`/`afw`/`afwp`/
-  `pip`/`bas` were pre-pinned "for 003 fabric" in `docs/conventions.md`; reserved Azure subnet
-  names (`AzureFirewallSubnet`, etc.) bypass the naming pattern by Azure mandate.
+- **Spec 3 (regional-hub-fabric)** — merged; the live hub fabric runs in **westus3** (migrated from
+  eastus2 for Postgres capacity). Two stacks (`infra/fabric` → `fabrics/<region>`,
+  `infra/platform-dns` → `platform/dns`) on the spec-001 CI rails.
+- **Spec 4 (spoke-vending)** — US1 (vend) implemented and **verified live**: `app1`
+  (`10.2.16.0/24`) vended into a target subscription via the `spoke-vend` dispatch — peered both
+  sides, hub-egressing, NSG'd, DNS-linked, Resource-Graph discoverable. One new parameterized stack
+  (`infra/spoke` → `spokes/<sub-id>/<spoke-name>`) + `spoke-vend`/`spoke-destroy` workflows. US3
+  teardown (`spoke-destroy`) wired. US2/US4 are demonstration increments over US1.
+  **Gate-G1 deferral**: `spoke_cidr` is a typed input fitted to the region `/16`; live by-size IPAM
+  allocation (ledger write/release) is deferred to the **spec-006** control plane (CI can't reach
+  the private ledger).
 
 ## Notes
 
