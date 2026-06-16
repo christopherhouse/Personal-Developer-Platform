@@ -1,0 +1,74 @@
+name: fabric-destroy
+
+# Article VIII: destroy is never automatic. Manual workflow_dispatch only, gated on a typed
+# confirmation matching the region. The destroy plan FAILS on the protected resources
+# (prevent_destroy on the fabric RG + CanNotDelete management lock) unless the protection-removal
+# PR has merged first — that reviewed PR deletes the azurerm_management_lock.fabric resource and
+# the RG prevent_destroy flag, and its apply removes the lock; only THEN can this workflow
+# destroy (FR-015, infra/fabric/README.md). Destroying a fabric severs the region's egress +
+# management hub; the ledger hub carve-out and the platform-shared DNS zones SURVIVE (they live
+# elsewhere — FR-014).
+#
+# Scope boundary: this spec's fabric owns NO spoke peerings (spokes own their side and live in
+# their own state — spec 004/006), so the destroy plan surfaces no hub-side peerings.
+# Peering-aware teardown ("destroy with live peerings", US2 edge case) is a spec 004/006 concern.
+
+on:
+  workflow_dispatch:
+    inputs:
+      destroy-confirm:
+        description: 'Type the region to confirm destroy: eastus2'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tofu-fabric   # shares the apply lock — no destroy during an apply
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/fabric
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Verify typed confirmation
+        if: inputs.destroy-confirm != 'eastus2'
+        run: |
+          echo "::error::destroy-confirm must equal the region 'eastus2' (got '${{ inputs.destroy-confirm }}'). Aborting."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      # Shown for the record; fails here on prevent_destroy (the RG) if protection is still in
+      # place — this is the SC-007 protection drill. The CanNotDelete lock additionally blocks
+      # ARM deletes until the protection-removal PR's apply has removed it.
+      - name: tofu plan -destroy
+        run: tofu plan -destroy -input=false -no-color | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu destroy
+        run: tofu destroy -input=false -no-color -auto-approve

@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [foundations, control-plane]
+        stack: [foundations, control-plane, platform-dns, fabric]
     # Serialize applies per stack; never cancel an in-flight apply (FR-016). Job-level so the
     # matrix value can key the group — top-level concurrency can't see matrix context.
     concurrency:
