@@ -32,11 +32,18 @@ resource "azurerm_resource_group" "fabric" {
 # T018 — Management-plane protection: blocks deletes of everything in the RG (firewall, bastion,
 # VNet, PIPs) from ANY tooling — portal, CLI, IaC. The complement to prevent_destroy, which only
 # stops `tofu destroy`. The fabric-destroy workflow removes this lock before destroying.
+#
+# MUST be created LAST. A CanNotDelete lock on the RG blocks the subnet operations the Firewall
+# and Bastion perform when they attach to AzureFirewallSubnet / AzureBastionSubnet (the same
+# class of failure that hits Postgres VNet injection in the control-plane stack). depends_on
+# forces the lock after those resources so their subnet attachments complete before the guard.
 resource "azurerm_management_lock" "fabric" {
   name       = "lock-pdp-${local.region}-fabric"
   scope      = azurerm_resource_group.fabric.id
   lock_level = "CanNotDelete"
   notes      = "Article IV/VIII carve-out: this region's egress + management hub. Removal only via the fabric-destroy workflow or a reviewed protection-removal PR (infra/fabric/README.md)."
+
+  depends_on = [module.firewall, module.bastion]
 }
 
 # ----------------------------------------------------------------------------
