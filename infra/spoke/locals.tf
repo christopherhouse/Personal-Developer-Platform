@@ -34,6 +34,22 @@ locals {
   firewall_private_ip     = data.terraform_remote_state.fabric.outputs.firewall_private_ip
   shared_dns_zone_ids     = data.terraform_remote_state.fabric.outputs.shared_dns_zone_ids
 
+  # The hub→spoke peering (main.tf T014) is created on the hub VNet, which the azurerm peering
+  # resource addresses by NAME + RG (not by ID). The contract surfaces the hub VNet ID; its name
+  # is the last ID segment — a pure derive, no extra upstream coupling.
+  hub_vnet_name = reverse(split("/", local.hub_vnet_id))[0]
+
+  # Spoke→shared-zone DNS links (main.tf T015) are created in the platform sub and need each
+  # zone's RG + name, while the fabric publishes zone resource IDs. Parse both from the ID:
+  #   /subscriptions/<s>/resourceGroups/<rg>/providers/Microsoft.Network/privateDnsZones/<zone>
+  # split index 4 = RG; the last segment = the zone name (zone names contain dots, never slashes).
+  dns_links = {
+    for key, zone_id in local.shared_dns_zone_ids : key => {
+      resource_group_name = split("/", zone_id)[4]
+      zone_name           = reverse(split("/", zone_id))[0]
+    }
+  }
+
   # Universal tags + the spoke marker. pdp-spoke=<name> makes the spoke RG and its contents
   # discoverable as this spoke via Resource Graph (Article III; conventions §2). No pdp-env here
   # — that is a workload-scope tag (spec 008), not a property of the spoke.
