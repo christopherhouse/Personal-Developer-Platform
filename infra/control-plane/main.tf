@@ -65,6 +65,15 @@ module "vnet" {
           name = "Microsoft.DBforPostgreSQL/flexibleServers"
         }
       }]
+      # The Flexible Server auto-adds a Microsoft.Storage service endpoint to its delegated
+      # subnet on first provision (MS Learn: provides backbone connectivity to Azure Storage;
+      # "Removing this endpoint can lead to unintended consequences"). Declare it so Terraform
+      # matches Azure instead of trying to strip it. Locations are the region + its pair, as
+      # Azure assigns them.
+      service_endpoints_with_location = [{
+        service   = "Microsoft.Storage"
+        locations = [local.region, "eastus"]
+      }]
     }
   }
 
@@ -73,28 +82,27 @@ module "vnet" {
 }
 
 # ----------------------------------------------------------------------------
-# Private DNS zone for the Flexible Server, linked to the control-plane VNet.
-# The zone NAME is the DNS domain itself (docs/conventions.md §1 exception); it must end
-# in postgres.database.azure.com and differ from the server name (research §1).
+# Private DNS for the Flexible Server — uses the CENTRALIZED, canonically-named
+# `privatelink.postgres.database.azure.com` zone owned by infra/platform-dns (dns RG), not a
+# bespoke per-stack zone. All private DNS zones live in the dns RG (architecture.md); the
+# control-plane only LINKS its VNet to the shared zone (ownership rule, mirrors the fabric).
+# MS Learn: the VNet-integration zone must end in postgres.database.azure.com — the canonical
+# privatelink name satisfies that; and keeping it OUT of the lock-scoped control-plane RG
+# avoids the documented "CanNotDelete lock on a Postgres DNS zone breaks record updates/HA".
 # ----------------------------------------------------------------------------
 
-module "postgres_dns" {
-  source  = "Azure/avm-res-network-privatednszone/azurerm"
-  version = "0.5.0"
+data "azurerm_private_dns_zone" "postgres" {
+  name                = "privatelink.postgres.database.azure.com"
+  resource_group_name = var.platform_dns_resource_group_name
+}
 
-  domain_name = "pdp-controlplane.private.postgres.database.azure.com"
-  parent_id   = azurerm_resource_group.control_plane.id
-
-  virtual_network_links = {
-    controlplane = {
-      vnetlinkname         = "vnetlink-pdp-${local.region}-controlplane"
-      vnetid               = module.vnet.resource_id
-      registration_enabled = false
-    }
-  }
-
-  enable_telemetry = false
-  tags             = local.tags
+resource "azurerm_private_dns_zone_virtual_network_link" "controlplane" {
+  name                  = "vnetlink-pdp-${local.region}-controlplane"
+  resource_group_name   = var.platform_dns_resource_group_name
+  private_dns_zone_name = data.azurerm_private_dns_zone.postgres.name
+  virtual_network_id    = module.vnet.resource_id
+  registration_enabled  = false
+  tags                  = local.tags
 }
 
 # ----------------------------------------------------------------------------
@@ -124,7 +132,7 @@ module "postgres" {
 
   # Private access via VNet injection; no public endpoint ever (FR-002, Article IX).
   delegated_subnet_id           = module.vnet.subnets["postgres"].resource_id
-  private_dns_zone_id           = module.postgres_dns.resource_id
+  private_dns_zone_id           = data.azurerm_private_dns_zone.postgres.id
   public_network_access_enabled = false
 
   # CRITICAL override (AVM v0.2.2 smoke finding): the module's firewall_rules default is
@@ -162,6 +170,11 @@ module "postgres" {
       config = "BTREE_GIST"
     }
   }
+
+  # Ensure the hub→zone link exists before the server integrates with the zone (mirrors the
+  # original design where the zone module created the link ahead of the server). The server
+  # references the zone via private_dns_zone_id but not the link resource directly.
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.controlplane]
 
   enable_telemetry = false
   tags             = local.tags

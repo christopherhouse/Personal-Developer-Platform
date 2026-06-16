@@ -1,13 +1,13 @@
 variable "region" {
   description = "Full Azure region name for this fabric (e.g. eastus2). Drives resource names, the location of every resource, and the pdp-fabric tag. The only other knob is region_index."
   type        = string
-  default     = "eastus2"
+  default     = "westus3"
 }
 
 variable "region_index" {
   description = "The registered region's index — the 2nd octet of its /16 and the ONLY address knob. The hub carve-out is 10.<region_index>.252.0/22 (the ledger's standing reservation; spec 002). Sourced from register_region; passed by the control plane (spec 006) or set directly until then."
   type        = number
-  default     = 1
+  default     = 2
 
   validation {
     # Index 0 is the platform supernet (10.0.0.0/16, spec 002 data-model §1); valid region
@@ -27,5 +27,5 @@ variable "platform_subscription_id" {
 variable "platform_dns_resource_group_name" {
   description = "Resource group holding the platform-shared global Private DNS zones (owned by infra/platform-dns). The fabric data-looks-up the zones here to link the hub VNet; it does not own them."
   type        = string
-  default     = "rg-pdp-eastus2-dns"
+  default     = "rg-pdp-westus3-dns"
 }

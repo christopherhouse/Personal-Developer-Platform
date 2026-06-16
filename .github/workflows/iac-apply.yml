@@ -6,15 +6,14 @@ name: iac-apply
 # GitHub); push-triggered applies are then blocked by the guard until the fix-forward PR
 # is merged and the owner re-runs this workflow manually (workflow_dispatch).
 #
-# TWO PHASES, because of a cross-stack ordering dependency:
-#   * Phase 1 (job `apply`): the independent stacks — foundations, control-plane, platform-dns —
-#     apply in parallel, each in its own concurrency group (unrelated stacks never serialize).
-#   * Phase 2 (job `apply-fabric`): the fabric stack, which `needs` Phase 1. The fabric reads the
-#     platform-shared Private DNS zones via `data "azurerm_private_dns_zone"` (hub→zone links),
-#     so those zones MUST already exist — i.e. `platform-dns` must have applied first. A single
-#     parallel matrix raced fabric against platform-dns and failed fabric's data lookup; gating
-#     fabric behind Phase 1 removes the race. (Spokes etc. that depend on fabric land in later
-#     specs and would extend Phase 2 / add a Phase 3.)
+# TWO PHASES, because of cross-stack ordering dependencies:
+#   * Phase 1 (job `apply`): foundations + platform-dns apply in parallel. Neither depends on
+#     another stack. platform-dns creates the platform-shared Private DNS zones.
+#   * Phase 2 (job `apply-dependent`): control-plane + fabric, which `needs` Phase 1. BOTH read
+#     a platform-shared Private DNS zone via `data "azurerm_private_dns_zone"` at plan time
+#     (control-plane → privatelink.postgres for its VNet-integrated server; fabric → the hub
+#     zone links), so the zones MUST already exist. Running them parallel to platform-dns raced
+#     the data lookup and failed; gating them behind Phase 1 removes the race.
 
 on:
   push:
@@ -31,16 +30,14 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Phase 1 — independent stacks, applied in parallel.
+  # Phase 1 — stacks with no cross-stack dependency. platform-dns publishes the zones.
   # ---------------------------------------------------------------------------
   apply:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        stack: [foundations, control-plane, platform-dns]
-    # Serialize applies per stack; never cancel an in-flight apply (FR-016). Job-level so the
-    # matrix value can key the group — top-level concurrency can't see matrix context.
+        stack: [foundations, platform-dns]
     concurrency:
       group: tofu-${{ matrix.stack }}
       cancel-in-progress: false
@@ -57,10 +54,10 @@ jobs:
       - uses: actions/checkout@v5
 
       # FR-016 guard: if the most recent completed run of this workflow failed, block
-      # push-triggered runs (conservative/workflow-wide with the matrix). Resolution = merge
-      # the fix-forward PR, then trigger this workflow manually (workflow_dispatch), which
-      # bypasses the guard. Lives in Phase 1 only: Phase 2 `needs` Phase 1, so a blocked Phase 1
-      # also stops fabric; a manual dispatch skips this step and both phases run.
+      # push-triggered runs. Resolution = merge the fix-forward PR, then trigger this workflow
+      # manually (workflow_dispatch), which bypasses the guard. Lives in Phase 1 only: Phase 2
+      # `needs` Phase 1, so a blocked Phase 1 also stops the dependent stacks; a manual dispatch
+      # skips this step and both phases run.
       - name: Failed-state guard
         if: github.event_name == 'push'
         env:
@@ -87,7 +84,6 @@ jobs:
       - name: tofu init
         run: tofu init -input=false
 
-      # Re-plan fresh, then apply exactly that plan (clarification Q3).
       - name: tofu plan
         run: tofu plan -input=false -no-color -out=tfplan | tee "$GITHUB_STEP_SUMMARY"
 
@@ -100,19 +96,22 @@ jobs:
           echo "Applied stack '${{ matrix.stack }}' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
-  # Phase 2 — fabric. Gated on Phase 1 so the platform-dns zones the fabric links to exist
-  # before its `data` lookups run. If any Phase 1 stack fails, this job is skipped (fabric is
-  # never applied against an incomplete platform).
+  # Phase 2 — stacks that read platform-dns zones at plan time. Gated on Phase 1 so the zones
+  # exist first. If any Phase 1 stack fails, this whole phase is skipped.
   # ---------------------------------------------------------------------------
-  apply-fabric:
+  apply-dependent:
     needs: apply
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [control-plane, fabric]
     concurrency:
-      group: tofu-fabric   # shares the lock with fabric-destroy — no apply during a destroy
+      group: tofu-${{ matrix.stack }}   # fabric shares its group with fabric-destroy
       cancel-in-progress: false
     defaults:
       run:
-        working-directory: infra/fabric
+        working-directory: infra/${{ matrix.stack }}
     env:
       ARM_USE_OIDC: "true"
       ARM_USE_AZUREAD: "true"
@@ -145,4 +144,4 @@ jobs:
       - name: Run traceability
         if: always()
         run: |
-          echo "Applied stack 'fabric' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "Applied stack '${{ matrix.stack }}' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"

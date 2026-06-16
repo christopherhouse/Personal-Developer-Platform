@@ -7,7 +7,9 @@ terraform {
     resource_group_name  = "RG-TF"
     storage_account_name = "cmhtfstatesa"
     container_name       = "tfstate"
-    key                  = "pdp/foundations"
-    use_azuread_auth     = true
+    # Region-qualified key: the westus3 re-bootstrap builds a fresh foundations state
+    # independent of the (to-be-decommissioned) eastus2 state at "pdp/foundations".
+    key              = "pdp/foundations-westus3"
+    use_azuread_auth = true
   }
 }

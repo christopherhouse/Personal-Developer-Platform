@@ -22,11 +22,12 @@ variable "github_repository" {
 }
 
 locals {
-  # Initial primary region (spec 001 assumption); later regions arrive with spec 009.
-  region = "eastus2"
+  # Primary region. Moved eastus2 → westus3 (Postgres capacity in eastus2 was exhausted;
+  # full platform re-bootstrap). region_short per docs/conventions.md.
+  region = "westus3"
 
   # Pinned region-short table for constrained-name resources (docs/conventions.md).
-  region_short = "eus2"
+  region_short = "wus3"
 
   # Universal tags — required on every PDP-managed resource group (data-model.md §1).
   # pdp-deployed-by flipped from "owner" (bootstrap) to "github-actions" with the first
