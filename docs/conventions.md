@@ -213,10 +213,9 @@ pdp-platform    = "true"           # platform-shared scope marker (spec 005)
 `github-actions` with the first CI-driven apply — the value tracks whoever last applied
 the stack.
 
-> **Follow-up (spec 005 → specs 001–003):** the live foundations/DNS/control-plane stacks
-> predate `pdp-platform` and do not yet emit it, so inventory currently reports them as
-> orphan drift. Adding `pdp-platform = "true"` to those stacks' `local.tags` (one IaC PR,
-> applied via CI) clears the finding and lists them under platform-shared inventory.
+> **History:** `pdp-platform` was introduced by spec 005 (#19) and applied to the
+> foundations/DNS/control-plane stacks in #20; before that they emitted only the universal
+> tags and inventory reported them as orphan drift. They now classify as platform-shared.
 
 ### Spoke resources (spec 004)
 
