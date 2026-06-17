@@ -29,21 +29,36 @@ resource "azurerm_resource_group" "fabric" {
   }
 }
 
-# T018 — Management-plane protection: blocks deletes of everything in the RG (firewall, bastion,
-# VNet, PIPs) from ANY tooling — portal, CLI, IaC. The complement to prevent_destroy, which only
-# stops `tofu destroy`. The fabric-destroy workflow removes this lock before destroying.
+# T018 — Management-plane protection (Article IV/VIII): CanNotDelete locks on the FIREWALL and
+# BASTION specifically — deliberately NOT on the resource group. Per-resource locks still protect
+# the whole hub: you cannot delete the locked firewall/bastion, and you cannot delete the hub VNet
+# or the RG while the firewall occupies AzureFirewallSubnet — so this region's egress + management
+# hub stays undeletable from any plane (portal/CLI/IaC), the same guarantee an RG-scope lock gave.
 #
-# MUST be created LAST. A CanNotDelete lock on the RG blocks the subnet operations the Firewall
-# and Bastion perform when they attach to AzureFirewallSubnet / AzureBastionSubnet (the same
-# class of failure that hits Postgres VNet injection in the control-plane stack). depends_on
-# forces the lock after those resources so their subnet attachments complete before the guard.
-resource "azurerm_management_lock" "fabric" {
-  name       = "lock-pdp-${local.region}-fabric"
-  scope      = azurerm_resource_group.fabric.id
+# WHY NOT the RG (changed 2026-06-17): a CanNotDelete lock permits create/update but blocks DELETE
+# of EVERY resource in its scope — including child resources of the hub VNet. The hub-side spoke
+# peering (spec 004, peer-hub-to-<spoke>) is such a child, so an RG-scope lock let a spoke VEND its
+# hub peering but blocked spoke TEARDOWN from deleting it → a dangling, Disconnected peering
+# (Article IV violation). Scoping the lock to the firewall/bastion leaves the VNet and its peerings
+# deletable, so spoke-destroy cleanly removes its hub→spoke side, while the irreplaceable egress +
+# management resources stay locked.
+#
+# CanNotDelete permits create/update, so referencing module.*.resource[_].id (which forces the lock
+# after each resource exists) does not interfere with their subnet attachments. The fabric-destroy
+# teardown removes these locks via the reviewed protection-removal PR (README.md) — now two lock
+# resources instead of one.
+resource "azurerm_management_lock" "firewall" {
+  name       = "lock-pdp-${local.region}-afw"
+  scope      = module.firewall.resource.id
   lock_level = "CanNotDelete"
-  notes      = "Article IV/VIII carve-out: this region's egress + management hub. Removal only via the fabric-destroy workflow or a reviewed protection-removal PR (infra/fabric/README.md)."
+  notes      = "Article IV/VIII carve-out: this region's controlled egress. Removal only via the fabric-destroy workflow or a reviewed protection-removal PR (infra/fabric/README.md)."
+}
 
-  depends_on = [module.firewall, module.bastion]
+resource "azurerm_management_lock" "bastion" {
+  name       = "lock-pdp-${local.region}-bas"
+  scope      = module.bastion.resource_id
+  lock_level = "CanNotDelete"
+  notes      = "Article IV/VIII carve-out: this region's private management access. Removal only via the fabric-destroy workflow or a reviewed protection-removal PR (infra/fabric/README.md)."
 }
 
 # ----------------------------------------------------------------------------

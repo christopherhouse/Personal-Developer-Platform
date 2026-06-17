@@ -152,22 +152,30 @@ high blast radius, so the fabric is **destroyable-by-design but guarded**:
 
 | Resource | Protection |
 |---|---|
-| `rg-pdp-eastus2-fabric` | `prevent_destroy` lifecycle **and** `CanNotDelete` management lock (`lock-pdp-eastus2-fabric`) |
-| firewall / bastion / VNet / PIPs / DNS links | covered by the RG management lock (inherited) + the RG `prevent_destroy` guard — no dedicated per-resource guard |
+| `rg-pdp-<region>-fabric` | `prevent_destroy` lifecycle (hard-fails any `tofu destroy` at plan time) |
+| firewall `afw-pdp-<region>-hub` | `CanNotDelete` management lock `lock-pdp-<region>-afw` |
+| bastion `bas-pdp-<region>-hub` | `CanNotDelete` management lock `lock-pdp-<region>-bas` |
+| hub VNet / RG / PIPs | undeletable transitively — the RG/VNet can't be deleted while the locked firewall occupies `AzureFirewallSubnet`; the firewall's PIPs can't be deleted while attached |
 
-**Why the guard is on the RG, not each resource:** the firewall and bastion are provisioned by
-AVM modules, so a `lifecycle { prevent_destroy }` block cannot be injected onto those resources
-directly (the same module-internal limitation the control-plane stack documents). The RG
-`prevent_destroy` makes any `tofu destroy` **fail at plan time**, and the `CanNotDelete` lock
-blocks deletes from every plane (portal / CLI / IaC) — together the equivalent Article-IV
-carve-out.
+**Why per-resource locks, not an RG-scope lock (changed 2026-06-17):** a `CanNotDelete` lock blocks
+*delete* of every resource in its scope, **including child resources of the hub VNet**. The hub-side
+spoke peering (`peer-hub-to-<spoke>`, spec 004) is a VNet child, so an RG-scope lock let a spoke
+*vend* its hub peering but blocked spoke *teardown* from deleting it — leaving a dangling,
+Disconnected peering (an Article IV violation, caught live on the first `spoke-destroy`). Locking the
+**firewall + bastion** individually keeps the irreplaceable egress + management resources undeletable
+(and the RG/VNet undeletable while the firewall is attached), while leaving the VNet's peerings
+deletable so spoke-destroy stays clean. The `prevent_destroy` on the RG still hard-fails any
+`tofu destroy` at plan time. (The firewall and bastion are AVM-module resources, so
+`lifecycle { prevent_destroy }` can't be injected on them — the management locks are the equivalent
+Article-IV guard.)
 
 ## Teardown handoff — the `fabric-destroy` workflow (SC-006/007, Scenario 7)
 
 Deliberate teardown is a single confirmed workflow, never automatic (Article VIII):
 
-1. **Protection-removal PR (reviewed):** delete the `azurerm_management_lock.fabric` resource and
-   the RG `prevent_destroy` flag from `main.tf`; plan + merge. The apply removes the lock.
+1. **Protection-removal PR (reviewed):** delete the `azurerm_management_lock.firewall` and
+   `azurerm_management_lock.bastion` resources and the RG `prevent_destroy` flag from `main.tf`;
+   plan + merge. The apply removes both locks.
 2. **Run `fabric-destroy`** (`workflow_dispatch`, `.github/workflows/fabric-destroy.yml`) and type
    the region **`eastus2`** to confirm. It `tofu init` → `plan -destroy` (the SC-007 drill: this
    step **fails** if step 1 hasn't merged) → `destroy`.

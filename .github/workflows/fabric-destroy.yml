@@ -2,9 +2,10 @@ name: fabric-destroy
 
 # Article VIII: destroy is never automatic. Manual workflow_dispatch only, gated on a typed
 # confirmation matching the region. The destroy plan FAILS on the protected resources
-# (prevent_destroy on the fabric RG + CanNotDelete management lock) unless the protection-removal
-# PR has merged first — that reviewed PR deletes the azurerm_management_lock.fabric resource and
-# the RG prevent_destroy flag, and its apply removes the lock; only THEN can this workflow
+# (prevent_destroy on the fabric RG + CanNotDelete locks on the firewall & bastion) unless the
+# protection-removal PR has merged first — that reviewed PR deletes the
+# azurerm_management_lock.firewall and azurerm_management_lock.bastion resources and the RG
+# prevent_destroy flag, and its apply removes both locks; only THEN can this workflow
 # destroy (FR-015, infra/fabric/README.md). Destroying a fabric severs the region's egress +
 # management hub; the ledger hub carve-out and the platform-shared DNS zones SURVIVE (they live
 # elsewhere — FR-014).
