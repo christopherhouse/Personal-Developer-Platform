@@ -115,9 +115,10 @@ spoke in a target subscription from a typed CIDR.
 - [X] T018 [US1] `infra/spoke/README.md`: AVM smoke-validation results (vnet module under OpenTofu
       1.11.x), the **typed-CIDR staging** note (Gate G1; live allocation = spec 006), the
       **dual-subscription identity** requirement (§I3), and the egress/NSG posture
-- [~] T019 [US1] `tofu fmt -check` + `validate` clean ✅ (local gate passed under OpenTofu 1.11.6);
-      **remaining (live CI):** vend `app1` via the `spoke-vend` dispatch and run quickstart
-      Scenarios 1–4, 6, 9; confirm a **second vend is a no-op** (idempotency, FR-009)
+- [X] T019 [US1] `tofu fmt -check` + `validate` clean (OpenTofu 1.11.6); `app1` vended via the
+      `spoke-vend` dispatch and **verified live** — quickstart Scenarios 1✅ 2✅ 3✅ (route →
+      `10.2.252.4`) 4✅ 6✅ 9✅ (peerings Connected both sides, `10.2.16.0/24`, NSG present,
+      RG discoverable by `pdp-spoke=app1`). Idempotency re-vend (FR-009) = re-dispatch app1 (no-op)
 
 **Checkpoint**: A spoke is vended, peered, egress-through-hub, NSG'd, DNS-linked — MVP demoable.
 
@@ -129,9 +130,9 @@ spoke in a target subscription from a typed CIDR.
 
 **Independent Test**: quickstart Scenario **5**.
 
-- [ ] T020 [US2] Confirm the per-spoke backend key (`spokes/<sub-id>/<spoke-name>`) and naming make
+- [X] T020 [US2] Confirm the per-spoke backend key (`spokes/<sub-id>/<spoke-name>`) and naming make
       `(subscription, spoke-name)` the identity; re-vending a name converges, a new name adds a
-      spoke (FR-007/009) — document in README
+      spoke (FR-007/009) — documented in `infra/spoke/README.md` (§ Identity & idempotency)
 - [ ] T021 [US2] Run quickstart Scenario 5: vend `app2` (`10.2.17.0/24`) into the same subscription
       as `app1`; confirm both exist, non-overlapping, each independently peered; re-vend `app1`
       (no duplicate) and confirm `app2` untouched
@@ -147,10 +148,12 @@ untouched; no lock to remove.
 
 **Independent Test**: quickstart Scenario **7**.
 
-- [ ] T022 [US3] Finish `spoke-destroy.yml`: typed `destroy-confirm` must equal the spoke name;
-      `tofu init` (the spoke's key) → `destroy`; ensure the destroy removes the **hub-side** peering
-      via the platform aliased provider (no dangling peering — Article IV) — modeled on
-      `fabric-destroy.yml` minus the lock-removal (spokes have no lock)
+- [X] T022 [US3] Finish `spoke-destroy.yml`: typed `destroy-confirm` must equal the spoke name;
+      `tofu init` (the spoke's key) → `plan -destroy` → `destroy`; both peering sides live in the
+      one spoke state, so the destroy removes the **hub-side** peering via the platform aliased
+      provider (no dangling peering — Article IV). Modeled on `fabric-destroy.yml` minus the
+      lock-removal (spokes have no lock). `spoke_cidr` set to a region-derived placeholder (destroy
+      is state-driven; value is irrelevant to teardown)
 - [ ] T023 [US3] Run quickstart Scenario 7: destroy `app1`; confirm zero residual spoke resources,
       `peer-hub-to-app1` removed from the hub VNet, `app2`/hub/shared zones untouched, and the
       `10.2.16.0/24` block reusable
@@ -166,8 +169,12 @@ only inputs.
 
 **Independent Test**: quickstart Scenario **8**.
 
-- [ ] T024 [US4] Audit `infra/spoke/` for hardcoded region/subscription/CIDR — everything MUST flow
-      from `var.*`/`local.*`/fabric remote state; fix any leak (FR-010)
+- [X] T024 [US4] Audit `infra/spoke/` for hardcoded region/subscription/CIDR — **clean**: no
+      region/sub/CIDR leaks in any resource body (all flow from `var.*`/`local.*`/fabric remote
+      state). The only constants are deliberate & region-agnostic: the singleton platform
+      **state-account** coordinates (`backend.tf` + the `fabrics/<region>` remote-state config in
+      `locals.tf`) and overridable **defaults** (`region`, `platform_subscription_id`) — same
+      posture the fabric stack documents (FR-010)
 - [ ] T025 [US4] Run quickstart Scenario 8: `tofu plan` a spoke into a second subscription and/or a
       second region by changing only inputs; confirm names/space/hub/DNS derive correctly with zero
       source edits
@@ -178,10 +185,11 @@ only inputs.
 
 ## Phase 7: Polish & cross-cutting
 
-- [ ] T026 [P] Commit `infra/spoke/.terraform.lock.hcl` with multi-platform hashes
-      (`linux_amd64` + `windows_amd64`, matching the other stacks) for reproducible CI
-- [ ] T027 [P] Update `docs/spec-backlog.md` Status (spec 4 in-progress/complete) and note the
-      Gate-G1 deferral (live allocation → spec 006)
+- [X] T026 [P] Commit `infra/spoke/.terraform.lock.hcl` with multi-platform hashes
+      (`linux_amd64` + `windows_amd64`, matching the other stacks) for reproducible CI —
+      regenerated via `tofu providers lock -platform=linux_amd64 -platform=windows_amd64`
+- [X] T027 [P] Update `docs/spec-backlog.md` Status (spec 4 US1 implemented + verified; spec 3
+      merged) and note the Gate-G1 deferral (live allocation → spec 006)
 - [ ] T028 Full quickstart.md run end-to-end (Scenarios 1–9) on a clean vend→destroy cycle across
       two spokes; record results and confirm SC-001…009 all pass
 

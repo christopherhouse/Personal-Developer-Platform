@@ -59,6 +59,12 @@ jobs:
       TF_VAR_region_index: ${{ inputs.region_index }}
       TF_VAR_target_subscription_id: ${{ inputs.target_subscription_id }}
       TF_VAR_spoke_name: ${{ inputs.spoke_name }}
+      # spoke_cidr is a required (no-default) var, so destroy must set SOMETHING to satisfy the
+      # required-variable + validation checks. But a destroy is STATE-driven — the value never
+      # affects what is removed — so we derive a guaranteed-valid placeholder from region_index
+      # (inside 10.<idx>.0.0/16, /24, third octet 0, clear of the …252.0/22 carve-out). The
+      # spoke's real block lives in state and is what actually gets torn down.
+      TF_VAR_spoke_cidr: "10.${{ inputs.region_index }}.0.0/24"
     steps:
       - name: Verify typed confirmation
         if: inputs.destroy-confirm != inputs.spoke_name
@@ -84,8 +90,17 @@ jobs:
           tofu init -input=false -no-color \
             -backend-config="key=spokes/${{ inputs.target_subscription_id }}/${{ inputs.spoke_name }}"
 
-      # TODO(T022): tofu plan -destroy (render to summary) → tofu destroy -auto-approve, passing
-      # the dispatch inputs. The destroy removes the hub-side peering via the platform aliased
-      # provider (no dangling peering — Article IV). Spokes have no lock to remove first.
-      - name: Destroy placeholder
-        run: echo "spoke-destroy skeleton — destroy body wired in T022 (US3)." >> "$GITHUB_STEP_SUMMARY"
+      # plan -destroy for the record, then destroy. Both peering sides live in this one spoke
+      # state — the spoke→hub side (target sub, default provider) and the hub→spoke side (platform
+      # sub, aliased provider) — so a single destroy removes BOTH, leaving no dangling hub peering
+      # (Article IV). Sibling spokes, the hub, and the shared DNS zones are untouched (only this
+      # spoke's vnet links are removed). Spokes have no lock/prevent_destroy, so no removal step.
+      - name: tofu plan -destroy
+        run: tofu plan -destroy -input=false -no-color | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu destroy
+        run: tofu destroy -input=false -no-color -auto-approve
+
+      - name: Run traceability
+        if: always()
+        run: echo "Destroyed spoke '${{ inputs.spoke_name }}' in ${{ inputs.target_subscription_id }} / ${{ inputs.region }} (both peering sides removed) at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"
