@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props. -->
+
+  <!-- Thin demonstrable console harness (FR-022) — NOT the spec-006 `pdp` CLI. Proves the
+       success criteria live against the deployed westus3 fabric + spec-004 spokes. Supplies
+       DefaultAzureCredential (Azure.Identity) to the injected-credential component. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pdp.ControlPlane.Inventory\Pdp.ControlPlane.Inventory.csproj" />
+  </ItemGroup>
+
+</Project>
