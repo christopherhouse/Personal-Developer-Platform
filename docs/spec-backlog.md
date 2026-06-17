@@ -23,13 +23,15 @@ Candidate feature specs in proposed build order. Each row becomes a
 - **Spec 3 (regional-hub-fabric)** — merged; the live hub fabric runs in **westus3** (migrated from
   eastus2 for Postgres capacity). Two stacks (`infra/fabric` → `fabrics/<region>`,
   `infra/platform-dns` → `platform/dns`) on the spec-001 CI rails.
-- **Spec 4 (spoke-vending)** — US1 (vend) implemented and **verified live**: `app1`
-  (`10.2.16.0/24`) vended into a target subscription via the `spoke-vend` dispatch — peered both
-  sides, hub-egressing, NSG'd, DNS-linked, Resource-Graph discoverable. One new parameterized stack
-  (`infra/spoke` → `spokes/<sub-id>/<spoke-name>`) + `spoke-vend`/`spoke-destroy` workflows. US3
-  teardown (`spoke-destroy`) wired. US2/US4 are demonstration increments over US1.
-  **Gate-G1 deferral**: `spoke_cidr` is a typed input fitted to the region `/16`; live by-size IPAM
-  allocation (ledger write/release) is deferred to the **spec-006** control plane (CI can't reach
+- **Spec 4 (spoke-vending)** — **complete; US1–US4 all verified live** (2026-06-17). One new
+  parameterized stack (`infra/spoke` → `spokes/<sub-id>/<spoke-name>`) + `spoke-vend`/`spoke-destroy`
+  dispatch workflows. Vended `app1`+`app2` into a cross-subscription target (peered both sides,
+  hub-egressing, NSG'd, DNS-linked, Resource-Graph discoverable), proved idempotent re-vend (FR-009),
+  destroyed both cleanly (no dangling hub peering), and proved cross-sub parameterization by plan.
+  **Cross-spec fix:** the fabric RG `CanNotDelete` lock blocked spoke teardown's hub-peering delete —
+  re-scoped to firewall+bastion (PR #17, spec 003 stack). **Gate-G1 deferral**: `spoke_cidr` is a
+  typed input fitted to the region `/16`; live by-size IPAM allocation (ledger write/release) is
+  deferred to the **spec-006** control plane (CI can't reach
   the private ledger).
 
 ## Notes

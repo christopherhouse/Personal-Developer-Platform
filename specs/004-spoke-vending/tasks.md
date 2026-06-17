@@ -133,9 +133,10 @@ spoke in a target subscription from a typed CIDR.
 - [X] T020 [US2] Confirm the per-spoke backend key (`spokes/<sub-id>/<spoke-name>`) and naming make
       `(subscription, spoke-name)` the identity; re-vending a name converges, a new name adds a
       spoke (FR-007/009) — documented in `infra/spoke/README.md` (§ Identity & idempotency)
-- [ ] T021 [US2] Run quickstart Scenario 5: vend `app2` (`10.2.17.0/24`) into the same subscription
-      as `app1`; confirm both exist, non-overlapping, each independently peered; re-vend `app1`
-      (no duplicate) and confirm `app2` untouched
+- [X] T021 [US2] Scenario 5 **verified live**: `app2` (`10.2.17.0/24`) vended into the same sub as
+      `app1` — both exist, non-overlapping, hub holds both `peer-hub-to-app1`/`peer-hub-to-app2`
+      Connected independently; re-vend of `app1` returned "No changes" (FR-009 idempotency), `app2`
+      untouched
 
 **Checkpoint**: Multiple spokes per subscription demonstrated independent.
 
@@ -154,9 +155,12 @@ untouched; no lock to remove.
       provider (no dangling peering — Article IV). Modeled on `fabric-destroy.yml` minus the
       lock-removal (spokes have no lock). `spoke_cidr` set to a region-derived placeholder (destroy
       is state-driven; value is irrelevant to teardown)
-- [ ] T023 [US3] Run quickstart Scenario 7: destroy `app1`; confirm zero residual spoke resources,
-      `peer-hub-to-app1` removed from the hub VNet, `app2`/hub/shared zones untouched, and the
-      `10.2.16.0/24` block reusable
+- [X] T023 [US3] Scenario 7 **verified live**: `spoke-destroy app1` removed all spoke resources +
+      `peer-hub-to-app1` from the hub (no dangling peering), `app2`/hub/shared zones untouched,
+      `10.2.16.0/24` reusable. **Surfaced + fixed a cross-spec bug**: the fabric RG's `CanNotDelete`
+      lock blocked deleting the hub-side peering (a CanNotDelete lock blocks delete of every resource
+      in scope, incl. VNet children) → the lock was re-scoped to firewall+bastion only (**PR #17**,
+      `fix(fabric)`); re-run then destroyed cleanly first-try
 
 **Checkpoint**: Spoke is cleanly destroyable; US1+US2+US3 demonstrable.
 
@@ -175,9 +179,11 @@ only inputs.
       **state-account** coordinates (`backend.tf` + the `fabrics/<region>` remote-state config in
       `locals.tf`) and overridable **defaults** (`region`, `platform_subscription_id`) — same
       posture the fabric stack documents (FR-010)
-- [ ] T025 [US4] Run quickstart Scenario 8: `tofu plan` a spoke into a second subscription and/or a
-      second region by changing only inputs; confirm names/space/hub/DNS derive correctly with zero
-      source edits
+- [X] T025 [US4] Scenario 8 **verified** (read-only `tofu plan`): changing only inputs (target →
+      platform sub, `spoke_name=u4demo`, `spoke_cidr=10.2.20.0/24`) derived all names/space/hub/DNS
+      correctly — `rg-pdp-westus3-spoke-u4demo`, `vnet-pdp-westus3-u4demo` @ `10.2.20.0/24`,
+      hub peering targeting the westus3 hub from remote state — `Plan: 10 to add, 0 change, 0
+      destroy`, zero source edits
 
 **Checkpoint**: All four stories independently demonstrable.
 
@@ -190,8 +196,10 @@ only inputs.
       regenerated via `tofu providers lock -platform=linux_amd64 -platform=windows_amd64`
 - [X] T027 [P] Update `docs/spec-backlog.md` Status (spec 4 US1 implemented + verified; spec 3
       merged) and note the Gate-G1 deferral (live allocation → spec 006)
-- [ ] T028 Full quickstart.md run end-to-end (Scenarios 1–9) on a clean vend→destroy cycle across
-      two spokes; record results and confirm SC-001…009 all pass
+- [X] T028 Full end-to-end **verified live** across two spokes (2026-06-17): vend `app1` → vend
+      `app2` → idempotent re-vend `app1` → destroy `app1` (`app2` survives clean) → destroy `app2`
+      → environment pristine (no spoke RGs, no hub→spoke peerings, shared zones intact). Scenarios
+      1–9 / SC-001…009 all pass
 
 ---
 
