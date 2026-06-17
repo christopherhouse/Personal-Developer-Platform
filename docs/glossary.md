@@ -12,6 +12,7 @@ here first.
 | **Workload** | A deployed instance of a solution running inside a spoke (e.g., "the demo API in spoke `app1` in East US 2"). |
 | **Workload archetype** | A parameterized, reusable template for a class of solution (e.g., container app + database). Deploying an archetype into a spoke produces a workload. |
 | **Environment** | A named workload instance grouping (e.g., `dev`, `demo`). Carried by the `pdp-env` tag; "what environments do I have deployed?" is answered by inventory grouped on this. |
+| **env_id** | The control plane's stable surrogate identifier (UUIDv7) for one managed environment in the Postgres registry — the primary key of intent and the **correlation key** threaded through a dispatched workflow (embedded in the run name) so a `workflow_run` outcome can be matched back to the request that caused it. Distinct from the human natural key `(kind, subscription, name)` that drives idempotent convergence. Introduced by the action layer (spec 006). |
 | **Platform subscription** | The single subscription hosting hubs, state backend, IPAM registry, and shared services. |
 | **Target subscription** | Any subscription the owner's identity can write to; valid destination for spokes and workloads. Discovered at runtime, never hardcoded. |
 | **Verb / action layer** | The typed, deterministic operations the platform exposes (`fabric create`, `spoke create`, `workload deploy`, `env list`, …). Implemented once, consumed by both the `pdp` CLI and the MCP server. |

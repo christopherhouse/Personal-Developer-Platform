@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+
+  <!-- Verbs: the single, front-end-agnostic verb implementation (CLI + future MCP wrap this).
+       Validate -> allocate (IPAM) -> record (Registry) -> plan -> confirm -> apply -> track.
+       Deliberately host-agnostic (no ASP.NET) so the `pdp` console CLI can reference it cleanly;
+       Wolverine runs equally under a console HostBuilder or the API host. -->
+  <ItemGroup>
+    <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.Postgresql" />
+    <PackageReference Include="WolverineFx.EntityFrameworkCore" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
+    <PackageReference Include="FluentValidation" />
+    <!-- Telemetry: ActivitySource/Meter + UseAzureMonitor() wiring (T022). The AspNetCore flavor is
+         host-agnostic enough to run under the console CLI too (no server is required). -->
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pdp.ControlPlane.Registry\Pdp.ControlPlane.Registry.csproj" />
+    <ProjectReference Include="..\Pdp.ControlPlane.Dispatch\Pdp.ControlPlane.Dispatch.csproj" />
+    <ProjectReference Include="..\Pdp.ControlPlane.Ipam\Pdp.ControlPlane.Ipam.csproj" />
+    <ProjectReference Include="..\Pdp.ControlPlane.Inventory\Pdp.ControlPlane.Inventory.csproj" />
+  </ItemGroup>
+
+</Project>

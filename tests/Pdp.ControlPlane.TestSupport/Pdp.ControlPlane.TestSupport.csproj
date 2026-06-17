@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+
+  <!-- Shared test harness for the control-plane test projects (T024). NOT a test project itself
+       (no IsTestProject) — it holds the heavy fixtures every test project reuses: one real Postgres
+       (Testcontainers + Respawn) with BOTH the ipam and registry migrations applied, the WireMock.Net
+       fake GitHub, and a configurable WebApplicationFactory base. Referenced by Verbs.Tests,
+       Registry.Tests, Dispatch.Tests, and Api.Tests (resolves analysis F1).
+       Microsoft.AspNetCore.Mvc.Testing brings the ASP.NET Core FrameworkReference for the WAF base. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Respawn" />
+    <PackageReference Include="WireMock.Net" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pdp.ControlPlane.Ipam\Pdp.ControlPlane.Ipam.csproj" />
+    <ProjectReference Include="..\..\src\Pdp.ControlPlane.Registry\Pdp.ControlPlane.Registry.csproj" />
+    <!-- The verb-layer DI + Wolverine host helper builds the full control plane against the container. -->
+    <ProjectReference Include="..\..\src\Pdp.ControlPlane.Verbs\Pdp.ControlPlane.Verbs.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+
+  <!-- The `pdp` CLI (System.CommandLine 2.0 GA). Assembly name `pdp`. Hosts the verb layer
+       in-process under the owner's DefaultAzureCredential; a mutating command dispatches then polls
+       the registry/GitHub correlation to terminal (or returns immediately with a no-wait flag). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>pdp</AssemblyName>
+    <RootNamespace>Pdp.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Azure.Identity" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pdp.ControlPlane.Verbs\Pdp.ControlPlane.Verbs.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,70 @@
+<Project>
+
+  <!-- Central Package Management for the PDP solution (introduced with spec 006, the platform's
+       first multi-component .NET service: 7 new src projects + 5 test projects join the existing
+       Ipam/Inventory libraries). One pinned version set across the whole solution; project files
+       carry PackageReference (no Version). Asset controls (PrivateAssets/IncludeAssets) stay on the
+       PackageReference in the consuming csproj. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Persistence — EF Core + Npgsql (specs 002/006)">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Messaging / lifecycle — Wolverine (spec 006)">
+    <PackageVersion Include="WolverineFx" Version="6.12.0" />
+    <PackageVersion Include="WolverineFx.Postgresql" Version="6.12.0" />
+    <!-- EF Core transactional middleware + EF Core saga storage (UseEntityFrameworkCoreTransactions,
+         AddDbContextWithWolverineIntegration). The EnvironmentSaga persists via RegistryDbContext's
+         environment_saga table (research §2) — this integration lives in its own package. -->
+    <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.12.0" />
+    <!-- Wolverine 6 no longer bundles the runtime (Roslyn) code generator; reference this so handler
+         glue compiles at startup (GH-2876). Production may later switch to static pre-generated code. -->
+    <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.12.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Dispatch — GitHub App + webhook + ingress (spec 006)">
+    <PackageVersion Include="Octokit" Version="14.0.0" />
+    <PackageVersion Include="GitHubJwt" Version="0.0.6" />
+    <PackageVersion Include="Octokit.Webhooks.AspNetCore" Version="4.0.3" />
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.7.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Verbs + CLI (spec 006)">
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.9" />
+  </ItemGroup>
+
+  <ItemGroup Label="Azure SDK + telemetry (specs 005/006)">
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.ResourceManager" Version="1.14.0" />
+    <PackageVersion Include="Azure.ResourceManager.ResourceGraph" Version="1.1.0" />
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Local dev orchestration — .NET Aspire (spec 006)">
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.4.5" />
+    <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.4.5" />
+  </ItemGroup>
+
+  <ItemGroup Label="Test stack (xUnit + Testcontainers + WireMock + WAF)">
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.12.0" />
+    <PackageVersion Include="Respawn" Version="7.0.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.11.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>
