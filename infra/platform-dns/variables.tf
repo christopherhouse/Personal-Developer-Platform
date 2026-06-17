@@ -13,8 +13,11 @@ locals {
 
   # Universal tags — required on every PDP-managed resource group (data-model.md §1).
   # Platform scope: NO pdp-fabric tag (this unit is region-agnostic; zones are not a fabric).
+  # pdp-platform marks this as platform-shared infrastructure so inventory (spec 005)
+  # classifies it as platform, not orphan drift (docs/conventions.md §2).
   tags = {
     pdp-managed     = "true"
     pdp-deployed-by = "github-actions"
+    pdp-platform    = "true"
   }
 }
