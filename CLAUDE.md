@@ -116,20 +116,28 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 004-spoke-vending (branch `004-spoke-vending`).
-Current plan: specs/004-spoke-vending/plan.md — read it for technical context, project structure,
-and constitution gates. Supporting design artifacts: specs/004-spoke-vending/research.md,
-data-model.md, quickstart.md, contracts/spoke-interfaces.md.
-Design decisions (clarify + Plan Gate G1, 2026-06-16): vend a configurable spoke VNet into any
-writable target subscription, peered both-sides to its region's hub (cross-sub, dual-subscription
-OIDC), egress via the hub firewall (0.0.0.0/0 → firewall_private_ip), an NSG on every subnet
-(Azure default rules only), DNS-linked to the shared zones; multiple spokes per subscription;
-freely destroyable (no lock, confirm-gated). Allocation: spoke_cidr is a TYPED input fitted to the
-region /16 — live by-size IPAM allocation is deferred to the spec-006 control plane (Gate G1:
-OpenTofu in CI can't reach the private ledger; allocation is a control-plane function). One new
-parameterized OpenTofu stack (infra/spoke → state spokes/<sub-id>/<spoke-name>) + spoke-vend /
-spoke-destroy dispatch workflows; no .NET in this spec.
-Platform context: the live platform is in WEST US 3 (region_index 2; migrated from eastus2 for
-Postgres capacity). Specs 001/002/003 are merged and deployed in westus3; this spec consumes the
-fabric outputs (terraform_remote_state fabrics/<region>) and the region /16 those established.
+Active feature: 005-environment-inventory (branch `005-environment-inventory`).
+Current plan: specs/005-environment-inventory/plan.md — read it for technical context, project
+structure, and constitution gates. Supporting design artifacts: specs/005-environment-inventory/
+research.md, data-model.md, quickstart.md, contracts/inventory-interfaces.md.
+Design decisions (clarify 2026-06-16; plan PASS, no constitution deviations): build the live,
+READ-ONLY inventory answering "what does PDP manage, and where?" derived SOLELY from Azure Resource
+Graph over the pdp-* tag schema across every accessible subscription (Article III) — never local
+records, the IPAM ledger, or OpenTofu state. Discover subscriptions at runtime, query ARG for RGs
+tagged pdp-managed=true, classify into fabric/spoke/workload grouped into environments (by pdp-env),
+report each with subscription+region (region from RG location — spokes carry no region tag), answer
+the three headline questions, and surface TAG-SIDE drift only (orphan / conformance / invisible /
+ambiguous) as INFORMATIONAL findings (inventory always succeeds). Clarify decisions: NO Azure
+identity/RBAC provisioned (pluggable TokenCredential; owner-local cred for the demo; spec-006
+control-plane identity injects later) → nothing to tear down; tag-side drift only (registry↔Azure
+reconciliation = spec 006); RESOURCE-GROUP granularity (no per-resource drill-down).
+Deliverable: this is the FIRST .NET feature after spec-002 IPAM — a reusable component
+src/Pdp.ControlPlane.Inventory (mirrors Pdp.ControlPlane.Ipam) + a thin demonstrable console
+src/Pdp.Inventory.Demo (NOT the spec-006 pdp CLI) + tests/Pdp.ControlPlane.Inventory.Tests. Stack:
+.NET 10, Azure.ResourceManager(.ResourceGraph) + Azure.Identity, System.Text.Json; xUnit + Shouldly
++ NSubstitute over an IResourceGraphReader seam (pure engine, no Azure in unit tests, NO
+Testcontainers/Postgres). No infra/ stack, no Azure resources, no GitHub workflow (read-only).
+Platform context: the live platform is in WEST US 3; specs 001–004 are merged/deployed in westus3
+(fabric + app1/app2 spokes), so there are real pdp-* RGs to classify. The Postgres environment
+registry (intent/owner/status) lands in spec 006; this spec reads neither it nor the ledger.
 <!-- SPECKIT END -->

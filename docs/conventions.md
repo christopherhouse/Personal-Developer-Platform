@@ -179,6 +179,7 @@ managed."
 | `pdp-managed` | **Every** PDP-managed RG | `true` | Presence + `true` is the inventory filter; never `false` (unmanaged = untagged). |
 | `pdp-deployed-by` | **Every** PDP-managed RG | `github-actions` \| `control-plane` \| `owner` | Enumerated actors. Run-level provenance lives in the provisioning-run audit trail (spec 6), not tags. |
 | `pdp-fabric` | RGs belonging to a regional fabric | Azure region name (e.g., `eastus2`) | Omitted on non-fabric scopes. |
+| `pdp-platform` | Platform-shared RGs (foundations / DNS / control plane) | `true` | Marks managed platform-shared infrastructure that belongs to no fabric/spoke/workload scope. Region is the RG location. Omitted on non-platform scopes. |
 | `pdp-spoke` | RGs belonging to a spoke | Spoke name, `[a-z0-9-]{1,24}` | Omitted on non-spoke scopes. |
 | `pdp-workload` | RGs holding a workload | Workload name, `[a-z0-9-]{1,24}` | Omitted elsewhere. |
 | `pdp-env` | RGs holding a workload | Environment name (`dev`, `demo`…), `[a-z0-9-]{1,16}` | Omitted elsewhere; the grouping key for "what environments do I have?" |
@@ -187,24 +188,35 @@ managed."
 
 1. **Universal tags** (`pdp-managed`, `pdp-deployed-by`) appear on **every** managed RG,
    without exception.
-2. **Scope tags** (`pdp-fabric`, `pdp-spoke`, `pdp-workload`, `pdp-env`) are present
-   **exactly when the scope applies**. Inapplicable scope tags are **omitted**, never
-   set to a sentinel like `n/a` or empty string.
+2. **Scope tags** (`pdp-fabric`, `pdp-platform`, `pdp-spoke`, `pdp-workload`, `pdp-env`)
+   are present **exactly when the scope applies**, and a managed RG carries **exactly one**
+   of the mutually-exclusive scopes (`pdp-fabric` / `pdp-platform` / `pdp-spoke` /
+   `pdp-workload`). Inapplicable scope tags are **omitted**, never set to a sentinel like
+   `n/a` or empty string. A managed RG with **no** scope tag is **orphan** drift; one with
+   **more than one** is **ambiguous** drift (spec 005).
 3. Tags are set by **IaC only**. Hand-edited tags are drift and revert on next plan.
 
-### Foundation resources
+### Foundation & platform-shared resources
 
-The foundations stack's RG carries the universal tags and **no** scope tags (platform
-scope):
+The foundations, shared-DNS, and control-plane stacks are **platform-shared** — managed
+infrastructure that belongs to no fabric/spoke/workload scope. Their RGs carry the
+universal tags plus the `pdp-platform` marker so inventory classifies them as platform
+infrastructure rather than orphan drift:
 
 ```hcl
 pdp-managed     = "true"
-pdp-deployed-by = "owner"          # → "github-actions" after the first CI apply (US3)
+pdp-deployed-by = "owner"          # → "github-actions" after the first CI apply
+pdp-platform    = "true"           # platform-shared scope marker (spec 005)
 ```
 
 `pdp-deployed-by` starts at `owner` during the local bootstrap and flips to
 `github-actions` with the first CI-driven apply — the value tracks whoever last applied
 the stack.
+
+> **Follow-up (spec 005 → specs 001–003):** the live foundations/DNS/control-plane stacks
+> predate `pdp-platform` and do not yet emit it, so inventory currently reports them as
+> orphan drift. Adding `pdp-platform = "true"` to those stacks' `local.tags` (one IaC PR,
+> applied via CI) clears the finding and lists them under platform-shared inventory.
 
 ### Spoke resources (spec 004)
 
