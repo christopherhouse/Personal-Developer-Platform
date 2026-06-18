@@ -1,3 +1,4 @@
+using JasperFx;
 using Pdp.ControlPlane.Dispatch;
 using Pdp.ControlPlane.Registry;
 using Wolverine;
@@ -38,6 +39,15 @@ public static class WolverineConfiguration
 
         // The reconciler's scheduled messages and the dispatch/track flow survive restarts.
         options.Policies.UseDurableLocalQueues();
+
+        // The control plane is single-node by design (one owner, one host — Article-level "no SaaS";
+        // spec 007 deploys ONE Api container). Solo mode skips the leadership election / node-assignment
+        // dance, so the inbox/outbox start immediately and recover faster after an ungraceful shutdown.
+        // It also removes the multi-host node-coordination contention that flares when the test suite
+        // starts and stops many hosts back-to-back against one shared Postgres (the CI flake). Revisit
+        // only if the Api is ever scaled to multiple replicas (the reconciler is already idempotent and
+        // single-flight is enforced at the registry, so even then this stays safe).
+        options.Durability.Mode = DurabilityMode.Solo;
 
         // Wolverine 6 unbundled the Roslyn code generator; compile handler glue at startup (GH-2876).
         options.UseRuntimeCompilation();
