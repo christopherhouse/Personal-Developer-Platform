@@ -33,6 +33,16 @@ Candidate feature specs in proposed build order. Each row becomes a
   typed input fitted to the region `/16`; live by-size IPAM allocation (ledger write/release) is
   deferred to the **spec-006** control plane (CI can't reach
   the private ledger).
+- **Spec 5 (environment-inventory)** — merged (PR #19); live read-only inventory from Azure Resource
+  Graph, reused by the spec-006 verb layer.
+- **Spec 6 (action-layer)** — **merged** (PR #22, 2026-06-18); build + tests green in CI. The `pdp` CLI
+  verb surface, GitHub-App dispatch + `env_id`-correlated tracking (webhook + polling reconcile), the
+  Postgres intent registry / run-audit trail, the two-phase plan→confirm / confirm-before-destroy gate,
+  and **Gate-G1 closed** (spoke CIDR allocated live by size from the ledger at vend, released on
+  destroy). **Live acceptance (quickstart T071/T072) DEFERRED**: the live ledger Postgres is private
+  VNet-injected + Entra-only and unreachable from the owner's laptop without VNet access (no `/32`
+  firewall possible on a VNet-injected server). It is naturally unblocked by **spec 7**, which hosts the
+  control plane in-VNet (ACA + managed identity).
 
 ## Notes
 
