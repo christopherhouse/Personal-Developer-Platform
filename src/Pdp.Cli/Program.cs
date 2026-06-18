@@ -12,12 +12,34 @@ using Pdp.Cli.Commands;
 using Pdp.ControlPlane.Verbs;
 using Wolverine;
 
-// Help, version, and parse-only invocations must not require a live Postgres/GitHub — only real verb
-// execution starts the messaging host.
+// Content root = the assembly directory so appsettings*.json (copied next to the exe) load regardless
+// of the working directory `dotnet run`/the Aspire host launches us from.
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
+
+// Always layer the gitignored local-dev overlay on top (optional) so a single file supplies the local
+// Postgres/GitHub config without per-session env vars. CreateApplicationBuilder only auto-loads it when
+// the environment is Development; layering it explicitly makes `dotnet run` pick it up too.
+builder.Configuration.AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: false);
+
+// When launched by the Aspire AppHost, Postgres arrives as ConnectionStrings:pdp — let it win over any
+// configured ControlPlane value so the same binary works both standalone and under Aspire (forward-
+// compatible with the spec-007 host wiring).
+var aspireConnection = builder.Configuration.GetConnectionString("pdp");
+if (!string.IsNullOrWhiteSpace(aspireConnection))
+{
+    builder.Configuration["ControlPlane:PostgresConnectionString"] = aspireConnection;
+}
+
+// Help, version, parse-only, and the host-light `migrate` setup command must not require a live
+// Postgres/GitHub or the Wolverine messaging host — only real verb execution starts it.
 var isHostlessInvocation = args.Length == 0 ||
     args.Any(a => a is "-h" or "--help" or "--version" or "-?");
+var isMigrate = args is ["migrate", ..];
 
-var builder = Host.CreateApplicationBuilder(args);
 var controlPlaneOptions = builder.Configuration
     .GetSection(ControlPlaneOptions.SectionName)
     .Get<ControlPlaneOptions>() ?? new ControlPlaneOptions();
@@ -42,10 +64,16 @@ var root = new RootCommand("pdp — Personal Developer Platform control plane (s
 root.Options.Add(jsonOption);
 root.Options.Add(verboseOption);
 root.Subcommands.Add(SpokeCommand.Create(host.Services, jsonOption));
+root.Subcommands.Add(FabricCommand.Create(host.Services, jsonOption, controlPlaneOptions.PlatformSubscriptionId));
+root.Subcommands.Add(IpamCommand.Create(host.Services, jsonOption));
+root.Subcommands.Add(InventoryCommand.Create(host.Services, jsonOption));
+root.Subcommands.Add(EnvCommand.Create(host.Services, jsonOption));
+root.Subcommands.Add(RunCommand.Create(host.Services, jsonOption));
+root.Subcommands.Add(MigrateCommand.Create(controlPlaneOptions.PostgresConnectionString));
 
 var parseResult = root.Parse(args);
 
-if (isHostlessInvocation)
+if (isHostlessInvocation || isMigrate)
 {
     return await parseResult.InvokeAsync().ConfigureAwait(false);
 }

@@ -20,6 +20,14 @@ public sealed class ControlPlaneOptions
     public string PostgresConnectionString { get; set; } = string.Empty;
 
     /// <summary>
+    /// The platform subscription that hosts the regional fabrics (spec 003). A fabric environment is
+    /// identified by <c>(Fabric, PlatformSubscriptionId, Region)</c> in the registry (data-model §1) —
+    /// the fabric has no per-spoke target subscription. Defaults to the live platform subscription
+    /// (the public id in <c>infra/fabric/variables.tf</c>); override per environment via configuration.
+    /// </summary>
+    public string PlatformSubscriptionId { get; set; } = "8bd05b2f-62c5-4def-9869-f0617ebb3970";
+
+    /// <summary>
     /// Application Insights connection string for Azure Monitor OTel export (SC-013). When null, the
     /// MVP falls back to the console/OTLP exporter — no Azure resource is provisioned here (the App
     /// Insights resource ships with the spec-007 host — FR-O1).

@@ -50,4 +50,7 @@ public interface IEnvironmentRegistry
 
     /// <summary>Returns an environment's provisioning-run audit trail, newest first (FR-015).</summary>
     Task<IReadOnlyList<ProvisioningRun>> GetRunsAsync(Guid envId, CancellationToken cancellationToken = default);
+
+    /// <summary>Resolves a single provisioning run by its surrogate <c>run_id</c>, or null (FR-015).</summary>
+    Task<ProvisioningRun?> FindRunByIdAsync(Guid runId, CancellationToken cancellationToken = default);
 }

@@ -42,6 +42,10 @@ public static class ServiceCollectionExtensions
         var options = configuration.GetSection(ControlPlaneOptions.SectionName).Get<ControlPlaneOptions>()
                       ?? new ControlPlaneOptions();
 
+        // Expose the bound ControlPlaneOptions as a resolvable value (the fabric verbs take it directly
+        // for the platform-subscription natural key).
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<ControlPlaneOptions>>().Value);
+
         // --- Persistence: IPAM + registry on the shared platform Postgres -----------------------
         // Wolverine integration registers each DbContext (Singleton options lifetime — a real perf
         // gain for Wolverine) and activates EF Core transactional middleware + saga support, so an
@@ -71,7 +75,12 @@ public static class ServiceCollectionExtensions
         // --- Registry + verbs ------------------------------------------------------------------
         services.AddScoped<IEnvironmentRegistry, EnvironmentRegistry>();
         services.AddScoped<ISpokeVerbs, SpokeVerbs>();
+        services.AddScoped<IFabricVerbs, FabricVerbs>();
+        services.AddScoped<IIpamVerbs, IpamVerbs>();
+        services.AddScoped<IInventoryVerbs, InventoryVerbs>();
+        services.AddScoped<IRunVerbs, RunVerbs>();
         services.AddSingleton<IValidator<SpokeCreateRequest>, SpokeCreateRequestValidator>();
+        services.AddSingleton<IValidator<FabricCreateRequest>, FabricCreateRequestValidator>();
 
         // --- Inventory read stack: reuse spec-005 with the injected credential (FR-013) ---------
         // "What's deployed?" routes here (ARG), never to the registry (FR-016). The control plane

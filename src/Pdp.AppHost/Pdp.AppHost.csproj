@@ -20,6 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Pdp.ControlPlane.Api\Pdp.ControlPlane.Api.csproj" />
     <ProjectReference Include="..\Pdp.ControlPlane.Ingress\Pdp.ControlPlane.Ingress.csproj" />
+    <!-- Referenced so the AppHost can run `pdp migrate` as a DB-prep resource on F5 (Tier-2 local dev). -->
+    <ProjectReference Include="..\Pdp.Cli\Pdp.Cli.csproj" />
   </ItemGroup>
 
 </Project>

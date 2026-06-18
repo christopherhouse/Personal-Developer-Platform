@@ -20,6 +20,7 @@ namespace Pdp.Cli.Tests;
 /// (SC-008), and the exit-code contract (contracts/cli-surface.md §3). Runs with <c>--no-wait</c> so no
 /// Postgres/Azure is required — the verb layer is an NSubstitute double.
 /// </summary>
+[Collection(CliConsoleCollection.Name)]
 public sealed class SpokeCommandTests
 {
     private const string Subscription = "66666666-6666-6666-6666-666666666666";

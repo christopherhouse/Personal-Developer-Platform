@@ -25,7 +25,12 @@ namespace Pdp.ControlPlane.Registry.Lifecycle;
 /// <param name="RunId">The pre-resolved provisioning-run id (UUIDv7).</param>
 /// <param name="WorkflowFile">The dispatch workflow (<c>spoke-vend.yml</c>).</param>
 /// <param name="GitRef">The git ref to dispatch against (default branch).</param>
-/// <param name="Inputs">The exact <c>workflow_dispatch</c> inputs (env_id, mode=apply, spoke_cidr, …).</param>
+/// <param name="Inputs">The exact <c>workflow_dispatch</c> inputs (env_id, mode, spoke_cidr, …).</param>
+/// <param name="Mode">
+/// The phase the first run dispatches: <see cref="RunPhase.Plan"/> for the two-phase Article VIII
+/// gate (US2 — plan first, then confirm), or <see cref="RunPhase.Apply"/> for the US1 one-shot vend.
+/// Either way the environment enters <see cref="EnvironmentStatus.Provisioning"/>.
+/// </param>
 public sealed record BeginSpokeProvisioning(
     Guid EnvId,
     string Subscription,
@@ -36,6 +41,115 @@ public sealed record BeginSpokeProvisioning(
     Guid RunId,
     string WorkflowFile,
     string GitRef,
+    IReadOnlyDictionary<string, string> Inputs,
+    RunPhase Mode = RunPhase.Apply);
+
+/// <summary>
+/// Starts a spoke-<b>destroy</b> saga (US2). The verb has validated and confirmed the destroy and
+/// resolved the existing environment; the saga's <c>Start</c> flips the environment to
+/// <see cref="EnvironmentStatus.Destroying"/>, records the destroy run, and cascades the dispatch in
+/// one durable transaction. <paramref name="Mode"/> is <see cref="RunPhase.Plan"/> for the
+/// destroy-preview (Article VIII) or <see cref="RunPhase.Destroy"/> for the one-shot confirmed destroy.
+/// On a successful destroy run the saga releases the IPAM allocation (FR-009); a failed destroy does
+/// not release (FR-011).
+/// </summary>
+/// <param name="EnvId">The surrogate correlation key of the environment being destroyed.</param>
+/// <param name="Subscription">Target subscription id.</param>
+/// <param name="Region">The environment's region.</param>
+/// <param name="Name">The spoke name (the allocation name to release on success).</param>
+/// <param name="Owner">Requesting principal.</param>
+/// <param name="RunId">The pre-resolved provisioning-run id (UUIDv7).</param>
+/// <param name="WorkflowFile">The dispatch workflow (<c>spoke-destroy.yml</c>).</param>
+/// <param name="GitRef">The git ref to dispatch against (default branch).</param>
+/// <param name="Inputs">The exact <c>workflow_dispatch</c> inputs (env_id, mode, target, destroy-confirm…).</param>
+/// <param name="Mode">The destroy phase to dispatch first (plan preview or destroy).</param>
+public sealed record BeginSpokeDestroy(
+    Guid EnvId,
+    string Subscription,
+    string Region,
+    string Name,
+    string Owner,
+    Guid RunId,
+    string WorkflowFile,
+    string GitRef,
+    IReadOnlyDictionary<string, string> Inputs,
+    RunPhase Mode = RunPhase.Destroy);
+
+/// <summary>
+/// Starts a fabric-provisioning saga (US3). A regional fabric (spec 003) owns no per-spoke address
+/// block — the verb has registered the region in the IPAM ledger (idempotent <c>RegisterRegionAsync</c>)
+/// and resolved the surrogate <see cref="EnvId"/>/<see cref="RunId"/>; the saga's <c>Start</c> records
+/// intent + the dispatch run and cascades the <c>fabric-vend.yml</c> dispatch in one durable transaction.
+/// A fabric is identified by its <see cref="Region"/> (the environment <c>Name</c>); there is no
+/// <c>SpokeCidr</c>. <paramref name="Mode"/> is <see cref="RunPhase.Plan"/> for the two-phase Article VIII
+/// gate or <see cref="RunPhase.Apply"/> for a one-shot vend.
+/// </summary>
+/// <param name="EnvId">The surrogate correlation key (UUIDv7).</param>
+/// <param name="Subscription">The platform subscription hosting the fabric.</param>
+/// <param name="Region">The fabric's region — also its natural-key name.</param>
+/// <param name="Owner">Requesting principal.</param>
+/// <param name="RunId">The pre-resolved provisioning-run id (UUIDv7).</param>
+/// <param name="WorkflowFile">The dispatch workflow (<c>fabric-vend.yml</c>).</param>
+/// <param name="GitRef">The git ref to dispatch against (default branch).</param>
+/// <param name="Inputs">The exact <c>workflow_dispatch</c> inputs (env_id, mode, region, region_index).</param>
+/// <param name="Mode">The phase the first run dispatches (plan or apply).</param>
+public sealed record BeginFabricProvisioning(
+    Guid EnvId,
+    string Subscription,
+    string Region,
+    string Owner,
+    Guid RunId,
+    string WorkflowFile,
+    string GitRef,
+    IReadOnlyDictionary<string, string> Inputs,
+    RunPhase Mode = RunPhase.Apply);
+
+/// <summary>
+/// Starts a fabric-<b>destroy</b> saga (US3). The verb has validated and confirmed the destroy (the
+/// owner restated the region) and resolved the existing fabric environment; the saga's <c>Start</c>
+/// flips it to <see cref="EnvironmentStatus.Destroying"/>, records the destroy run, and cascades the
+/// <c>fabric-destroy.yml</c> dispatch in one durable transaction. A fabric destroy releases <b>no</b>
+/// IPAM allocation — the region's hub carve-out is a standing reservation that survives (FR-014).
+/// </summary>
+/// <param name="EnvId">The surrogate correlation key of the fabric being destroyed.</param>
+/// <param name="Subscription">The platform subscription.</param>
+/// <param name="Region">The fabric's region (also its natural-key name and the destroy-confirm value).</param>
+/// <param name="Owner">Requesting principal.</param>
+/// <param name="RunId">The pre-resolved provisioning-run id (UUIDv7).</param>
+/// <param name="WorkflowFile">The dispatch workflow (<c>fabric-destroy.yml</c>).</param>
+/// <param name="GitRef">The git ref to dispatch against (default branch).</param>
+/// <param name="Inputs">The exact <c>workflow_dispatch</c> inputs (env_id, mode, region, destroy-confirm…).</param>
+/// <param name="Mode">The destroy phase to dispatch first (plan preview or destroy).</param>
+public sealed record BeginFabricDestroy(
+    Guid EnvId,
+    string Subscription,
+    string Region,
+    string Owner,
+    Guid RunId,
+    string WorkflowFile,
+    string GitRef,
+    IReadOnlyDictionary<string, string> Inputs,
+    RunPhase Mode = RunPhase.Destroy);
+
+/// <summary>
+/// The owner's explicit confirmation of a previously surfaced plan (Article VIII / FR-006) — routed to
+/// the one saga awaiting confirmation, which dispatches the gated mutation (<see cref="RunPhase.Apply"/>
+/// after a create-plan, <see cref="RunPhase.Destroy"/> after a destroy-plan). Ignored if the saga is
+/// not in fact awaiting confirmation (idempotent). Carries <see cref="SagaIdentityAttribute"/> on
+/// <see cref="EnvId"/> so Wolverine resolves the saga.
+/// </summary>
+/// <param name="EnvId">The environment whose plan is being confirmed (the saga identity).</param>
+/// <param name="RunId">The pre-resolved provisioning-run id for the confirmed mutation (UUIDv7).</param>
+/// <param name="WorkflowFile">The dispatch workflow for the confirmed mutation.</param>
+/// <param name="GitRef">The git ref to dispatch against.</param>
+/// <param name="Mode">The confirmed phase to run (apply or destroy).</param>
+/// <param name="Inputs">The exact dispatch inputs for the confirmed mutation.</param>
+public sealed record ConfirmationGiven(
+    [property: SagaIdentity] Guid EnvId,
+    Guid RunId,
+    string WorkflowFile,
+    string GitRef,
+    RunPhase Mode,
     IReadOnlyDictionary<string, string> Inputs);
 
 /// <summary>

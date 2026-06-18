@@ -17,6 +17,60 @@ public static class CompletionPoller
     private static bool IsTerminal(EnvironmentStatus status) => status is
         EnvironmentStatus.Active or EnvironmentStatus.Failed or EnvironmentStatus.Destroyed;
 
+    private static bool IsRunTerminal(RunOutcome outcome) => outcome is
+        RunOutcome.Succeeded or RunOutcome.Failed or RunOutcome.Cancelled or RunOutcome.TimedOut;
+
+    /// <summary>
+    /// The outcome of polling a dispatched plan run to terminal: the enriched <see cref="PlanResult"/>
+    /// (with the captured plan summary + run URL) and whether the plan run <see cref="Succeeded"/>.
+    /// </summary>
+    public sealed record PlanCompletion(PlanResult Plan, bool Succeeded);
+
+    /// <summary>
+    /// Polls a dispatched plan run to terminal (Article VIII gate), reconciling the GitHub correlation
+    /// each pass, and returns the <see cref="PlanResult"/> enriched with the captured plan summary and
+    /// run URL. <see cref="PlanCompletion.Succeeded"/> is false if the plan run did not succeed (the
+    /// caller must not proceed to apply/destroy). Returns the latest known state on timeout.
+    /// </summary>
+    public static async Task<PlanCompletion> AwaitPlanAsync(
+        IServiceProvider services,
+        PlanResult plan,
+        TimeSpan timeout,
+        TimeSpan interval,
+        CancellationToken cancellationToken)
+    {
+        var registry = services.GetRequiredService<IEnvironmentRegistry>();
+        var tracker = services.GetRequiredService<IRunTracker>();
+        var deadline = DateTimeOffset.UtcNow + timeout;
+
+        while (true)
+        {
+            try
+            {
+                await tracker.ReconcileInFlightAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Transient GitHub failure — keep polling; the next sweep retries the correlation.
+            }
+
+            var latest = (await registry.GetRunsAsync(plan.EnvId, cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault();
+            if (latest is { Phase: RunPhase.Plan } && IsRunTerminal(latest.Outcome))
+            {
+                var enriched = plan with { PlanSummary = latest.PlanSummary, RunUrl = latest.GitHubRunUrl };
+                return new PlanCompletion(enriched, latest.Outcome == RunOutcome.Succeeded);
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                return new PlanCompletion(plan with { RunUrl = latest?.GitHubRunUrl }, Succeeded: false);
+            }
+
+            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>
     /// Polls until the dispatched environment is terminal, refreshing the <see cref="VerbResult"/> with
     /// the final status, outcome, and run URL. Returns the latest known state on timeout.

@@ -33,4 +33,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- A real workflow_run delivery the webhook tests mutate + sign (the typed model is required-heavy). -->
+  <ItemGroup>
+    <Content Include="Resources\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

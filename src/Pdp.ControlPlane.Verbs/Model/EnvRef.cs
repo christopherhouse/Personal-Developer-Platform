@@ -30,4 +30,36 @@ public sealed record EnvRef
     /// <summary>Reference an environment by its natural key <c>(Kind, Subscription, Name)</c>.</summary>
     public static EnvRef ByNaturalKey(EnvironmentKind kind, string subscription, string name) =>
         new() { Kind = kind, Subscription = subscription, Name = name };
+
+    /// <summary>
+    /// Parses an owner-facing environment reference: either a bare <c>env_id</c> (UUID), or the compact
+    /// natural-key form <c>&lt;kind&gt;:&lt;subscription&gt;:&lt;name&gt;</c> (e.g. <c>spoke:&lt;sub&gt;:app5</c>,
+    /// <c>fabric:&lt;sub&gt;:westus3</c>). The kind token is case-insensitive. Returns false for any other
+    /// shape. Shared by the CLI <c>--env</c> option and the future MCP surface.
+    /// </summary>
+    public static bool TryParse(string? value, out EnvRef? reference)
+    {
+        reference = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (Guid.TryParse(value, out var envId))
+        {
+            reference = ById(envId);
+            return true;
+        }
+
+        var parts = value.Split(':', StringSplitOptions.TrimEntries);
+        if (parts.Length == 3 &&
+            Enum.TryParse<EnvironmentKind>(parts[0], ignoreCase: true, out var kind) &&
+            parts[1].Length > 0 && parts[2].Length > 0)
+        {
+            reference = ByNaturalKey(kind, parts[1], parts[2]);
+            return true;
+        }
+
+        return false;
+    }
 }

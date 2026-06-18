@@ -1,8 +1,11 @@
 // Pdp.ControlPlane.Ingress — the one public surface (Article IX): a pure YARP reverse proxy that
-// forwards the GitHub webhook to the internal Api. No business logic.
+// forwards POST /webhooks/github to the internal Api. No business logic, no auth termination — the Api's
+// MapGitHubWebhooks validates the HMAC signature (defense in depth; contracts/dispatch-and-tracking.md §4).
 //
-// Phase 1 scaffold: routes/clusters are loaded from configuration (wired in T065). The minimal app
-// below builds and runs; an empty "ReverseProxy" section is a valid (no-route) configuration.
+// Routes/clusters come from the "ReverseProxy" config section (appsettings.json); the single route
+// matches POST /webhooks/github and the destination Address is overridden by the Aspire AppHost for local
+// dev and by spec-007 ACA config in production. Spec 007 deploys this container to ACA with the public
+// ingress + managed identity (FR-019).
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services

@@ -1,5 +1,9 @@
 name: spoke-destroy
 
+# run-name carries the control plane's correlation surrogate so a dispatched run maps back to its
+# environment by parsing the title (spec 006, research §4): `pdp <mode> <env_id>`.
+run-name: pdp ${{ inputs.mode }} ${{ inputs.env_id }}
+
 # Article VIII: destroy is never automatic — manual workflow_dispatch only, gated on a typed
 # confirmation matching the SPOKE NAME. Spokes carry NO lock and NO prevent_destroy (FR — freely
 # destroyable), so unlike fabric-destroy there is no protection-removal step. SKELETON (T006):
@@ -7,10 +11,26 @@ name: spoke-destroy
 # the tofu destroy body lands in T022 (US3), and MUST remove BOTH peering sides — the spoke-side
 # (target sub) and the hub-side (platform aliased provider) — so no dangling hub peering remains
 # (Article IV). Sibling spokes, the hub, and the shared DNS zones are untouched.
+#
+# Two-phase dispatch (spec 006, Article VIII): the control plane runs `mode=plan` first to surface a
+# `tofu plan -destroy` preview, then `mode=destroy` after the owner's confirmation actually destroys.
 
 on:
   workflow_dispatch:
     inputs:
+      env_id:
+        description: "Control-plane correlation surrogate (env_id); echoed into run-name (spec 006)"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "plan = tofu plan -destroy preview (Article VIII); destroy = tear the spoke down"
+        required: false
+        type: choice
+        default: destroy
+        options:
+          - plan
+          - destroy
       region:
         description: "Azure region of the spoke, e.g. westus3"
         required: true
@@ -66,8 +86,10 @@ jobs:
       # spoke's real block lives in state and is what actually gets torn down.
       TF_VAR_spoke_cidr: "10.${{ inputs.region_index }}.0.0/24"
     steps:
+      # The typed-confirmation gate applies to the actual destroy. A mode=plan preview mutates nothing,
+      # so it does not require the typed confirm.
       - name: Verify typed confirmation
-        if: inputs.destroy-confirm != inputs.spoke_name
+        if: inputs.mode == 'destroy' && inputs.destroy-confirm != inputs.spoke_name
         run: |
           echo "::error::destroy-confirm must equal the spoke name '${{ inputs.spoke_name }}' (got '${{ inputs.destroy-confirm }}'). Aborting."
           exit 1
@@ -90,17 +112,31 @@ jobs:
           tofu init -input=false -no-color \
             -backend-config="key=spokes/${{ inputs.target_subscription_id }}/${{ inputs.spoke_name }}"
 
-      # plan -destroy for the record, then destroy. Both peering sides live in this one spoke
-      # state — the spoke→hub side (target sub, default provider) and the hub→spoke side (platform
-      # sub, aliased provider) — so a single destroy removes BOTH, leaving no dangling hub peering
-      # (Article IV). Sibling spokes, the hub, and the shared DNS zones are untouched (only this
-      # spoke's vnet links are removed). Spokes have no lock/prevent_destroy, so no removal step.
+      # plan -destroy for the record (both modes), then destroy (mode=destroy only). Both peering sides
+      # live in this one spoke state — the spoke→hub side (target sub, default provider) and the
+      # hub→spoke side (platform sub, aliased provider) — so a single destroy removes BOTH, leaving no
+      # dangling hub peering (Article IV). Sibling spokes, the hub, and the shared DNS zones are
+      # untouched (only this spoke's vnet links are removed). Spokes have no lock/prevent_destroy.
       - name: tofu plan -destroy
-        run: tofu plan -destroy -input=false -no-color | tee "$GITHUB_STEP_SUMMARY"
+        run: |
+          tofu plan -destroy -input=false -no-color | tee plan.txt
+          { echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # On a plan run, publish the destroy preview as a durable artifact the control plane downloads
+      # into the environment's PlanSummary for confirmation (contracts/dispatch-and-tracking.md §6);
+      # never destroy.
+      - name: Upload plan artifact
+        if: inputs.mode == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ inputs.env_id }}
+          path: infra/spoke/plan.txt
+          if-no-files-found: warn
 
       - name: tofu destroy
+        if: inputs.mode != 'plan'
         run: tofu destroy -input=false -no-color -auto-approve
 
       - name: Run traceability
         if: always()
-        run: echo "Destroyed spoke '${{ inputs.spoke_name }}' in ${{ inputs.target_subscription_id }} / ${{ inputs.region }} (both peering sides removed) at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "spoke-destroy mode='${{ inputs.mode }}' env_id='${{ inputs.env_id }}' spoke='${{ inputs.spoke_name }}' in ${{ inputs.target_subscription_id }} / ${{ inputs.region }} (both peering sides removed) at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"

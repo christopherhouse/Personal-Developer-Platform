@@ -15,7 +15,7 @@ public static class VerbResultView
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter(), new IpNetworkJsonConverter() },
     };
 
     /// <summary>Writes <paramref name="result"/> to <paramref name="writer"/> as JSON or a human table.</summary>

@@ -15,10 +15,22 @@
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
     <PackageReference Include="Azure.Identity" />
+    <!-- `pdp migrate` applies the ipam + registry EF Core schemas to a dev/local DB (no host start). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Pdp.ControlPlane.Verbs\Pdp.ControlPlane.Verbs.csproj" />
+  </ItemGroup>
+
+  <!-- Local config: appsettings.json is a committed template; appsettings.Development.json is
+       gitignored and carries the per-machine Postgres/GitHub values so `dotnet run` (and the Aspire
+       migrator) pick them up without per-session env vars. Both are copied next to the assembly so
+       the host (content root = AppContext.BaseDirectory) finds them regardless of working directory. -->
+  <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('appsettings.Development.json')" />
   </ItemGroup>
 
 </Project>

@@ -155,4 +155,10 @@ public sealed class EnvironmentRegistry(RegistryDbContext context) : IEnvironmen
             .Where(r => r.EnvId == envId)
             .OrderByDescending(r => r.DispatchedAt)
             .ToListAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ProvisioningRun?> FindRunByIdAsync(Guid runId, CancellationToken cancellationToken = default) =>
+        context.ProvisioningRuns
+            .AsNoTracking()
+            .SingleOrDefaultAsync(r => r.RunId == runId, cancellationToken);
 }

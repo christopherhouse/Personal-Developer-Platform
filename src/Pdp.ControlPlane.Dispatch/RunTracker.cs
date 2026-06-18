@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Pdp.ControlPlane.Registry;
@@ -64,6 +65,16 @@ public sealed class RunTracker(
             run.TrackedBy = source;
         }
 
+        // Article VIII plan-output capture (contracts/dispatch-and-tracking.md §6): when a plan run
+        // succeeds, download its plan artifact into PlanSummary so the verb can surface the actual
+        // `tofu plan` for confirmation. Best-effort — a missing/oversized artifact leaves PlanSummary
+        // null and the owner reviews via the run URL (never silently treats a missing plan as approved).
+        if (run.Phase == RunPhase.Plan && status.Outcome == RunOutcome.Succeeded)
+        {
+            run.PlanSummary = await TryDownloadPlanSummaryAsync(envId, status.GitHubRunId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         try
         {
             await context.SaveChangesAsync(cancellationToken);
@@ -106,10 +117,17 @@ public sealed class RunTracker(
 
             if (IsTerminal(run.Outcome))
             {
-                // The run finished but the environment never advanced — re-emit to unstick it (SC-006).
-                await EmitLifecycleAsync(environment.EnvId, run.Phase, run.Outcome, cancellationToken)
-                    .ConfigureAwait(false);
-                advanced++;
+                // A terminal Plan run legitimately leaves the environment non-terminal (Provisioning/
+                // Destroying) while it awaits the owner's confirmation (Article VIII) — do NOT re-emit
+                // or it would loop every sweep. Apply/Destroy runs that left the environment stuck DO
+                // get re-emitted to unstick them (SC-006).
+                if (run.Phase != RunPhase.Plan)
+                {
+                    await EmitLifecycleAsync(environment.EnvId, run.Phase, run.Outcome, cancellationToken)
+                        .ConfigureAwait(false);
+                    advanced++;
+                }
+
                 continue;
             }
 
@@ -139,6 +157,65 @@ public sealed class RunTracker(
         else
         {
             await bus.PublishAsync(new RunFailed(envId, phase, outcome)).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The plan artifact a plan run uploads: <c>plan-&lt;env_id&gt;</c> containing <c>plan.txt</c>
+    /// (the human <c>tofu plan</c> output the workflow wrote — contracts/dispatch-and-tracking.md §6).
+    /// </summary>
+    private const string PlanTextEntry = "plan.txt";
+
+    /// <summary>
+    /// Best-effort download of a succeeded plan run's <c>plan.txt</c> artifact into a string for
+    /// <see cref="ProvisioningRun.PlanSummary"/>. Returns null on any failure (no run id, missing
+    /// artifact, no <c>plan.txt</c> entry, transient GitHub error) — the caller surfaces the run URL
+    /// instead and never auto-confirms a missing plan.
+    /// </summary>
+    private async Task<string?> TryDownloadPlanSummaryAsync(
+        Guid envId,
+        long gitHubRunId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = await credential.CreateInstallationClientAsync(cancellationToken).ConfigureAwait(false);
+            var artifacts = await client.Actions.Artifacts
+                .ListWorkflowArtifacts(options.Owner, options.Repository, gitHubRunId)
+                .ConfigureAwait(false);
+
+            var artifactName = $"plan-{envId}";
+            var artifact = artifacts.Artifacts.FirstOrDefault(a =>
+                string.Equals(a.Name, artifactName, StringComparison.Ordinal));
+            if (artifact is null)
+            {
+                return null;
+            }
+
+            await using var download = await client.Actions.Artifacts
+                .DownloadArtifact(options.Owner, options.Repository, artifact.Id, "zip")
+                .ConfigureAwait(false);
+
+            // ZipArchive needs a seekable stream; the artifact download is a forward-only HTTP stream.
+            using var buffer = new MemoryStream();
+            await download.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+            buffer.Position = 0;
+
+            using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
+            var entry = archive.GetEntry(PlanTextEntry);
+            if (entry is null)
+            {
+                return null;
+            }
+
+            await using var entryStream = entry.Open();
+            using var reader = new StreamReader(entryStream);
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort: a plan we cannot fetch is surfaced via the run URL, not treated as approved.
+            return null;
         }
     }
 

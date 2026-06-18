@@ -11,6 +11,10 @@
        Microsoft.AspNetCore.Mvc.Testing brings the ASP.NET Core FrameworkReference for the WAF base. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Shared helper library, NOT a test container: it has no tests, so `dotnet test <solution>` must
+         skip it. The xunit/Mvc.Testing build props otherwise flip IsTestProject to true, which makes the
+         solution-level test run launch a testhost against this library and fail (no tests / no test SDK). -->
+    <IsTestProject>false</IsTestProject>
   </PropertyGroup>
 
   <ItemGroup>
