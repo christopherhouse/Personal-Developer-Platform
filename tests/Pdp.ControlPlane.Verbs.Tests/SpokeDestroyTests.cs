@@ -47,6 +47,7 @@ public sealed class SpokeDestroyTests(ControlPlanePostgresFixture fixture) : IAs
     public async Task DisposeAsync()
     {
         await _host.StopAsync();
+        _host.Dispose();
         _gitHub.Dispose();
     }
 

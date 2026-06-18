@@ -43,6 +43,7 @@ public sealed class ReconcileTests(ControlPlanePostgresFixture fixture) : IAsync
     public async Task DisposeAsync()
     {
         await _host.StopAsync();
+        _host.Dispose();
         _gitHub.Dispose();
     }
 

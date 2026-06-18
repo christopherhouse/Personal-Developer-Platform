@@ -35,7 +35,11 @@ public sealed class SpokeCreateTests(ControlPlanePostgresFixture fixture) : IAsy
             services => services.AddSingleton(_dispatcher));
     }
 
-    public async Task DisposeAsync() => await _host.StopAsync();
+    public async Task DisposeAsync()
+    {
+        await _host.StopAsync();
+        _host.Dispose();
+    }
 
     [Fact]
     public async Task Create_allocates_by_size_and_records_env_and_run_atomically()

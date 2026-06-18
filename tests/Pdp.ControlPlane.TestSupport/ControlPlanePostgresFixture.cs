@@ -18,7 +18,12 @@ namespace Pdp.ControlPlane.TestSupport;
 public sealed class ControlPlanePostgresFixture : IAsyncLifetime
 {
     // Pinned image so the engine behaviour the tests rely on (btree_gist, inet_ops) is stable.
+    // max_connections headroom (default 100): each test disposes its host so only one Wolverine host's
+    // pool is live at a time, but the durability agent + EF pools + Respawn/Npgsql briefly overlap during
+    // host start/stop; the higher ceiling keeps a loaded CI agent off the "too many clients" edge (the
+    // disposal in each test's teardown is the actual leak fix — this is defense in depth).
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:17-alpine")
+        .WithCommand("-c", "max_connections=300")
         .Build();
 
     private Respawner _respawner = null!;

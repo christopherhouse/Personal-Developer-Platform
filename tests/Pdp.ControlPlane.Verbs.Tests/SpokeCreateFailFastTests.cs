@@ -32,7 +32,11 @@ public sealed class SpokeCreateFailFastTests(ControlPlanePostgresFixture fixture
             services => services.AddSingleton(_dispatcher));
     }
 
-    public async Task DisposeAsync() => await _host.StopAsync();
+    public async Task DisposeAsync()
+    {
+        await _host.StopAsync();
+        _host.Dispose();
+    }
 
     [Fact]
     public async Task Create_against_an_unregistered_region_fails_before_any_write()

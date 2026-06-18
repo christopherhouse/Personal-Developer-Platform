@@ -49,6 +49,7 @@ public sealed class PlanConfirmTests(ControlPlanePostgresFixture fixture) : IAsy
     public async Task DisposeAsync()
     {
         await _host.StopAsync();
+        _host.Dispose();
         _gitHub.Dispose();
     }
 

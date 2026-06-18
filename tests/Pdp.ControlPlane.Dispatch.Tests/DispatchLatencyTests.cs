@@ -48,6 +48,7 @@ public sealed class DispatchLatencyTests(ControlPlanePostgresFixture fixture) : 
     public async Task DisposeAsync()
     {
         await _host.StopAsync();
+        _host.Dispose();
         _gitHub.Dispose();
     }
 

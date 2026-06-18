@@ -49,6 +49,7 @@ public sealed class RegistryAuditTests(ControlPlanePostgresFixture fixture) : IA
     public async Task DisposeAsync()
     {
         await _host.StopAsync();
+        _host.Dispose();
         _gitHub.Dispose();
     }
 
