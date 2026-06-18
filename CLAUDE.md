@@ -116,28 +116,40 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 005-environment-inventory (branch `005-environment-inventory`).
-Current plan: specs/005-environment-inventory/plan.md — read it for technical context, project
-structure, and constitution gates. Supporting design artifacts: specs/005-environment-inventory/
-research.md, data-model.md, quickstart.md, contracts/inventory-interfaces.md.
-Design decisions (clarify 2026-06-16; plan PASS, no constitution deviations): build the live,
-READ-ONLY inventory answering "what does PDP manage, and where?" derived SOLELY from Azure Resource
-Graph over the pdp-* tag schema across every accessible subscription (Article III) — never local
-records, the IPAM ledger, or OpenTofu state. Discover subscriptions at runtime, query ARG for RGs
-tagged pdp-managed=true, classify into fabric/spoke/workload grouped into environments (by pdp-env),
-report each with subscription+region (region from RG location — spokes carry no region tag), answer
-the three headline questions, and surface TAG-SIDE drift only (orphan / conformance / invisible /
-ambiguous) as INFORMATIONAL findings (inventory always succeeds). Clarify decisions: NO Azure
-identity/RBAC provisioned (pluggable TokenCredential; owner-local cred for the demo; spec-006
-control-plane identity injects later) → nothing to tear down; tag-side drift only (registry↔Azure
-reconciliation = spec 006); RESOURCE-GROUP granularity (no per-resource drill-down).
-Deliverable: this is the FIRST .NET feature after spec-002 IPAM — a reusable component
-src/Pdp.ControlPlane.Inventory (mirrors Pdp.ControlPlane.Ipam) + a thin demonstrable console
-src/Pdp.Inventory.Demo (NOT the spec-006 pdp CLI) + tests/Pdp.ControlPlane.Inventory.Tests. Stack:
-.NET 10, Azure.ResourceManager(.ResourceGraph) + Azure.Identity, System.Text.Json; xUnit + Shouldly
-+ NSubstitute over an IResourceGraphReader seam (pure engine, no Azure in unit tests, NO
-Testcontainers/Postgres). No infra/ stack, no Azure resources, no GitHub workflow (read-only).
-Platform context: the live platform is in WEST US 3; specs 001–004 are merged/deployed in westus3
-(fabric + app1/app2 spokes), so there are real pdp-* RGs to classify. The Postgres environment
-registry (intent/owner/status) lands in spec 006; this spec reads neither it nor the ledger.
+Active feature: 006-control-plane (branch `006-control-plane`).
+Current plan: specs/006-control-plane/plan.md — read it for technical context, project structure, and
+constitution gates. Supporting design artifacts: specs/006-control-plane/ research.md, data-model.md,
+quickstart.md, contracts/{verb-surface,dispatch-and-tracking,cli-surface}.md.
+Design decisions (clarify 2026-06-17; plan PASS, no constitution deviations): build the ACTION LAYER
+(control plane) — the .NET 10 service that turns owner intent into VALIDATED, DISPATCHED, and TRACKED
+infra ops, wrapping specs 2–5 behind TYPED VERBS exposed via the `pdp` CLI. The control plane
+DISPATCHES; it NEVER runs OpenTofu in-process (Article II): each mutating verb validates → allocates
+from the IPAM ledger → records intent in Postgres → dispatches a GitHub Actions workflow (GitHub App +
+workflow_dispatch, OIDC in CI) → tracks to completion correlated by env_id. Plan before apply; explicit
+confirm before destroy (Article VIII) via TWO-PHASE dispatch (mode=plan → confirm → apply/destroy).
+Closes Gate-G1: spoke CIDR allocated LIVE BY SIZE from the ledger at vend (IIpamLedger.AllocateAsync),
+released on destroy — spoke_cidr is no longer a typed input. Stands up the Postgres environment
+REGISTRY (intent/owner/status) + provisioning-run AUDIT trail; division of truth holds (ARG = deployed,
+Postgres = intent). Clarify decisions (2026-06-17): SCOPE = verb layer + registry + run-tracking + pdp
+CLI runnable under the OWNER'S CONTEXT; production ACA hosting + public ingress + managed identity
+DEFERRED to spec 007 (no new Azure resources here). RUN TRACKING = workflow_run webhook via a YARP
+ingress → internal handler container + POLLING RECONCILE for missed deliveries (≤60s sweep, ~2min
+settle); MVP closes the loop via polling. REGISTRY = existing platform Postgres, new `registry` schema.
+env_id = UUIDv7 surrogate (correlation key) + unique natural key (kind, subscription, name) for
+idempotent convergence; ADDED to docs/glossary.md. Single-flight per environment (reject mutating verb
+while a run is in flight). Adds fabric-vend.yml (fabric create had no dispatch path) + env_id/mode
+inputs on existing env workflows. Observability = Azure Monitor OTel → App Insights, env_id-correlated
+(App Insights resource ships with spec-007 host). Deliverable: NEW projects under src/ —
+Pdp.ControlPlane.Registry / .Dispatch / .Verbs / .Api / .Ingress, Pdp.Cli, Pdp.AppHost (+ tests).
+Stack: .NET 10, ASP.NET Core minimal APIs, Wolverine (+WolverineFx.Postgresql: durable outbox/inbox,
+scheduled messages, EF Core saga), EF Core/Npgsql + EFCore.NamingConventions, Octokit + GitHubJwt,
+Octokit.Webhooks.AspNetCore, Yarp.ReverseProxy, FluentValidation, Http.Resilience (Polly v8),
+System.CommandLine 2.0 GA, Azure.Identity/.ResourceManager (reuses spec-005 Pdp.ControlPlane.Inventory
+via its pluggable TokenCredential), Azure.Monitor.OpenTelemetry.AspNetCore, .NET Aspire. TESTS: xUnit +
+Shouldly + NSubstitute; Testcontainers.PostgreSql + Respawn (REQUIRED — ledger/registry/saga/outbox not
+testable in-memory); WireMock.Net (fake GitHub: dispatch inputs, webhook, missed-webhook→reconcile);
+WebApplicationFactory (webhook endpoint). NO prohibited deps (no MediatR/MassTransit/AutoMapper/Moq/
+Serilog/FluentAssertions v8+). Platform context: live platform in WEST US 3; specs 002–005 merged
+(IPAM ledger + westus3 fabric + app1/app2 spokes); the control plane reaches the PRIVATE Postgres CI
+cannot (the Gate-G1 premise).
 <!-- SPECKIT END -->

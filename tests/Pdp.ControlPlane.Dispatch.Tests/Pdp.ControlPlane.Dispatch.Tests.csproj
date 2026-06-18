@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Dispatch tests: WireMock.Net fakes the GitHub API to assert exact workflow_dispatch inputs,
+       run-name <-> env_id correlation, the missed-webhook -> reconcile path, and dispatch latency. -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="WireMock.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pdp.ControlPlane.Dispatch\Pdp.ControlPlane.Dispatch.csproj" />
+    <ProjectReference Include="..\Pdp.ControlPlane.TestSupport\Pdp.ControlPlane.TestSupport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

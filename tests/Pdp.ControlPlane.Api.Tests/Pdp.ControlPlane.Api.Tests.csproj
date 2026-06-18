@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Api tests: WebApplicationFactory for the webhook endpoint (HMAC + typed workflow_run), real
+       Postgres (Testcontainers + Respawn) for the inbox, and WireMock.Net for the missed-webhook ->
+       reconcile resilience path. Microsoft.AspNetCore.Mvc.Testing adds the ASP.NET Core
+       FrameworkReference needed by WebApplicationFactory. -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Respawn" />
+    <PackageReference Include="WireMock.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pdp.ControlPlane.Api\Pdp.ControlPlane.Api.csproj" />
+    <ProjectReference Include="..\Pdp.ControlPlane.TestSupport\Pdp.ControlPlane.TestSupport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- A real workflow_run delivery the webhook tests mutate + sign (the typed model is required-heavy). -->
+  <ItemGroup>
+    <Content Include="Resources\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

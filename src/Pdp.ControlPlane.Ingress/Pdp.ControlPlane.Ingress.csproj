@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+
+  <!-- Ingress: the ONE public surface (constitution Article IX). A pure YARP reverse proxy that
+       forwards POST /webhooks/github to the internal Api — no business logic. No project references
+       (T010). -->
+  <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" />
+  </ItemGroup>
+
+</Project>

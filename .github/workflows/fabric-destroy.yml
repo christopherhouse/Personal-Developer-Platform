@@ -1,5 +1,9 @@
 name: fabric-destroy
 
+# run-name carries the control plane's correlation surrogate so a dispatched run can be mapped back to
+# its environment by parsing the title (spec 006, research §4): `pdp <mode> <env_id>`.
+run-name: pdp ${{ inputs.mode }} ${{ inputs.env_id }}
+
 # Article VIII: destroy is never automatic. Manual workflow_dispatch only, gated on a typed
 # confirmation matching the region. The destroy plan FAILS on the protected resources
 # (prevent_destroy on the fabric RG + CanNotDelete locks on the firewall & bastion) unless the
@@ -10,6 +14,10 @@ name: fabric-destroy
 # management hub; the ledger hub carve-out and the platform-shared DNS zones SURVIVE (they live
 # elsewhere — FR-014).
 #
+# Two-phase dispatch (spec 006, Article VIII): mode=plan runs `tofu plan -destroy` to surface the
+# destroy preview (and uploads it as an artifact) without touching state; mode=destroy performs the
+# destroy after the owner's confirmation.
+#
 # Scope boundary: this spec's fabric owns NO spoke peerings (spokes own their side and live in
 # their own state — spec 004/006), so the destroy plan surfaces no hub-side peerings.
 # Peering-aware teardown ("destroy with live peerings", US2 edge case) is a spec 004/006 concern.
@@ -17,8 +25,31 @@ name: fabric-destroy
 on:
   workflow_dispatch:
     inputs:
+      env_id:
+        description: "Control-plane correlation surrogate (env_id); echoed into run-name (spec 006)"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "plan = tofu plan -destroy preview (Article VIII); destroy = perform the destroy"
+        required: false
+        type: choice
+        default: destroy
+        options:
+          - plan
+          - destroy
+      region:
+        description: "Azure region of the fabric to destroy, e.g. westus3"
+        required: true
+        type: string
+        default: westus3
+      region_index:
+        description: "Registered region index (2nd octet of the /16), e.g. 2 for westus3"
+        required: true
+        type: string
+        default: "2"
       destroy-confirm:
-        description: 'Type the region to confirm destroy: eastus2'
+        description: 'Type the region to confirm destroy (must equal "region")'
         required: true
         type: string
 
@@ -42,11 +73,15 @@ jobs:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_region: ${{ inputs.region }}
+      TF_VAR_region_index: ${{ inputs.region_index }}
     steps:
+      # On a destroy run the typed confirmation must restate the region (Article VIII). A plan-only
+      # preview is allowed without it (it mutates nothing).
       - name: Verify typed confirmation
-        if: inputs.destroy-confirm != 'eastus2'
+        if: inputs.mode == 'destroy' && inputs.destroy-confirm != inputs.region
         run: |
-          echo "::error::destroy-confirm must equal the region 'eastus2' (got '${{ inputs.destroy-confirm }}'). Aborting."
+          echo "::error::destroy-confirm must equal the region '${{ inputs.region }}' (got '${{ inputs.destroy-confirm }}'). Aborting."
           exit 1
 
       - uses: actions/checkout@v5
@@ -62,14 +97,31 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: tofu init
-        run: tofu init -input=false
+      # Per-region state key via partial backend config (overrides backend.tf's pinned default key).
+      - name: tofu init (per-region backend key)
+        run: |
+          tofu init -input=false -no-color \
+            -backend-config="key=fabrics/${{ inputs.region }}"
 
       # Shown for the record; fails here on prevent_destroy (the RG) if protection is still in
       # place — this is the SC-007 protection drill. The CanNotDelete lock additionally blocks
-      # ARM deletes until the protection-removal PR's apply has removed it.
+      # ARM deletes until the protection-removal PR's apply has removed it. On a plan run this is
+      # the surfaced destroy preview the control plane downloads for confirmation.
       - name: tofu plan -destroy
-        run: tofu plan -destroy -input=false -no-color | tee "$GITHUB_STEP_SUMMARY"
+        run: tofu plan -destroy -input=false -no-color | tee plan.txt | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan artifact
+        if: inputs.mode == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ inputs.env_id }}
+          path: infra/fabric/plan.txt
+          if-no-files-found: warn
 
       - name: tofu destroy
+        if: inputs.mode != 'plan'
         run: tofu destroy -input=false -no-color -auto-approve
+
+      - name: Run traceability
+        if: always()
+        run: echo "fabric-destroy mode='${{ inputs.mode }}' env_id='${{ inputs.env_id }}' region='${{ inputs.region }}' at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"

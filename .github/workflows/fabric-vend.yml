@@ -1,0 +1,118 @@
+name: fabric-vend
+
+# run-name carries the control plane's correlation surrogate so a dispatched run can be mapped back to
+# its environment by parsing the title (spec 006, research §4): `pdp <mode> <env_id>`.
+run-name: pdp ${{ inputs.mode }} ${{ inputs.env_id }}
+
+# Stand up one regional hub-and-spoke fabric (spec 003) into the platform subscription (Articles I/II —
+# OpenTofu only in dispatched CI, OIDC, zero stored secrets). FR-012a: fabric create previously had no
+# dispatch path; this is it. The control plane registers the region in the IPAM ledger (Gate-G1 path is
+# spoke-only) and dispatches this workflow with env_id/mode/region/region_index. Two-phase (Article VIII):
+# mode=plan surfaces the plan and uploads it as an artifact; mode=apply creates the fabric.
+#
+# State: one state per region at fabrics/<region>, set at init via partial backend config (backend.tf's
+# pinned key is overridden here so additional regions get their own state). region_index is the ONLY
+# address knob — the hub carve-out is 10.<region_index>.252.0/22 (the ledger's standing reservation).
+
+on:
+  workflow_dispatch:
+    inputs:
+      env_id:
+        description: "Control-plane correlation surrogate (env_id); echoed into run-name (spec 006)"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "plan = tofu plan only (Article VIII preview); apply = create the fabric"
+        required: false
+        type: choice
+        default: apply
+        options:
+          - plan
+          - apply
+      region:
+        description: "Azure region to stand the fabric up in, e.g. westus3"
+        required: true
+        type: string
+        default: westus3
+      region_index:
+        description: "Registered region index (2nd octet of the /16), e.g. 2 for westus3"
+        required: true
+        type: string
+        default: "2"
+
+permissions:
+  contents: read
+  id-token: write          # OIDC token issuance for azure/login + the azurerm backend/providers
+
+concurrency:
+  # Shares the apply lock with fabric-destroy so a destroy never races a vend of the fabric.
+  group: tofu-fabric
+  cancel-in-progress: false
+
+jobs:
+  vend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/fabric
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Stack inputs, threaded from the dispatch.
+      TF_VAR_region: ${{ inputs.region }}
+      TF_VAR_region_index: ${{ inputs.region_index }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Per-region state key via partial backend config (overrides backend.tf's pinned default key so
+      # each region keeps its own state at fabrics/<region>).
+      - name: tofu init (per-region backend key)
+        run: |
+          tofu init -input=false -no-color \
+            -backend-config="key=fabrics/${{ inputs.region }}"
+
+      # Two-phase dispatch (spec 006, Article VIII): mode=plan first surfaces the plan; mode=apply after
+      # confirmation creates the fabric. All stack inputs flow from the TF_VAR_* env above.
+      - name: tofu plan
+        run: |
+          tofu plan -input=false -no-color -out=tfplan | tee plan.txt
+          { echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # On a plan run, publish the plan as a durable artifact the control plane downloads into the
+      # environment's PlanSummary for confirmation (contracts/dispatch-and-tracking.md §6); never apply.
+      - name: tofu show (structured plan)
+        if: inputs.mode == 'plan'
+        run: tofu show -no-color -json tfplan > plan.json
+
+      - name: Upload plan artifact
+        if: inputs.mode == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ inputs.env_id }}
+          path: |
+            infra/fabric/plan.txt
+            infra/fabric/plan.json
+          if-no-files-found: warn
+
+      - name: tofu apply
+        if: inputs.mode != 'plan'
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: echo "fabric-vend mode='${{ inputs.mode }}' env_id='${{ inputs.env_id }}' region='${{ inputs.region }}' (index ${{ inputs.region_index }}) at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"

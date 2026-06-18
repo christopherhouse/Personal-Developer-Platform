@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+
+  <!-- Dispatch: the execution-plane boundary (Article II). The only GitHub-touching code —
+       GitHub App auth (Octokit + GitHubJwt), workflow_dispatch, run-name <-> env_id correlation,
+       and the Wolverine-scheduled reconciler. Isolated behind seams for WireMock testing.
+       Terminal records flow back as Wolverine messages, so the only project dependency is on
+       Registry — its enums (RunPhase/RunOutcome/TrackingSource) are part of the dispatch/track seam
+       contracts (T020). -->
+  <ItemGroup>
+    <PackageReference Include="Octokit" />
+    <PackageReference Include="GitHubJwt" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="WolverineFx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pdp.ControlPlane.Registry\Pdp.ControlPlane.Registry.csproj" />
+  </ItemGroup>
+
+</Project>

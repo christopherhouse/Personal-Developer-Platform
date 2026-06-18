@@ -35,3 +35,7 @@ Thumbs.db
 *.log
 .env
 .env.*
+
+# Per-machine local dev config (carries the local Postgres connection / dev GitHub App values).
+# appsettings.json is the committed template; the Development overlay is never source.
+appsettings.Development.json

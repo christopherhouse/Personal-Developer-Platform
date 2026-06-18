@@ -7,8 +7,8 @@
        The component depends on Azure.Core.TokenCredential (injected, FR-019) — NOT Azure.Identity;
        the demo harness supplies DefaultAzureCredential, spec-006 injects a managed identity. -->
   <ItemGroup>
-    <PackageReference Include="Azure.ResourceManager" Version="1.14.0" />
-    <PackageReference Include="Azure.ResourceManager.ResourceGraph" Version="1.1.0" />
+    <PackageReference Include="Azure.ResourceManager" />
+    <PackageReference Include="Azure.ResourceManager.ResourceGraph" />
   </ItemGroup>
 
 </Project>
