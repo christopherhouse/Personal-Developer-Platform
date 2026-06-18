@@ -116,40 +116,44 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 006-control-plane (branch `006-control-plane`).
-Current plan: specs/006-control-plane/plan.md — read it for technical context, project structure, and
-constitution gates. Supporting design artifacts: specs/006-control-plane/ research.md, data-model.md,
-quickstart.md, contracts/{verb-surface,dispatch-and-tracking,cli-surface}.md.
-Design decisions (clarify 2026-06-17; plan PASS, no constitution deviations): build the ACTION LAYER
-(control plane) — the .NET 10 service that turns owner intent into VALIDATED, DISPATCHED, and TRACKED
-infra ops, wrapping specs 2–5 behind TYPED VERBS exposed via the `pdp` CLI. The control plane
-DISPATCHES; it NEVER runs OpenTofu in-process (Article II): each mutating verb validates → allocates
-from the IPAM ledger → records intent in Postgres → dispatches a GitHub Actions workflow (GitHub App +
-workflow_dispatch, OIDC in CI) → tracks to completion correlated by env_id. Plan before apply; explicit
-confirm before destroy (Article VIII) via TWO-PHASE dispatch (mode=plan → confirm → apply/destroy).
-Closes Gate-G1: spoke CIDR allocated LIVE BY SIZE from the ledger at vend (IIpamLedger.AllocateAsync),
-released on destroy — spoke_cidr is no longer a typed input. Stands up the Postgres environment
-REGISTRY (intent/owner/status) + provisioning-run AUDIT trail; division of truth holds (ARG = deployed,
-Postgres = intent). Clarify decisions (2026-06-17): SCOPE = verb layer + registry + run-tracking + pdp
-CLI runnable under the OWNER'S CONTEXT; production ACA hosting + public ingress + managed identity
-DEFERRED to spec 007 (no new Azure resources here). RUN TRACKING = workflow_run webhook via a YARP
-ingress → internal handler container + POLLING RECONCILE for missed deliveries (≤60s sweep, ~2min
-settle); MVP closes the loop via polling. REGISTRY = existing platform Postgres, new `registry` schema.
-env_id = UUIDv7 surrogate (correlation key) + unique natural key (kind, subscription, name) for
-idempotent convergence; ADDED to docs/glossary.md. Single-flight per environment (reject mutating verb
-while a run is in flight). Adds fabric-vend.yml (fabric create had no dispatch path) + env_id/mode
-inputs on existing env workflows. Observability = Azure Monitor OTel → App Insights, env_id-correlated
-(App Insights resource ships with spec-007 host). Deliverable: NEW projects under src/ —
-Pdp.ControlPlane.Registry / .Dispatch / .Verbs / .Api / .Ingress, Pdp.Cli, Pdp.AppHost (+ tests).
-Stack: .NET 10, ASP.NET Core minimal APIs, Wolverine (+WolverineFx.Postgresql: durable outbox/inbox,
-scheduled messages, EF Core saga), EF Core/Npgsql + EFCore.NamingConventions, Octokit + GitHubJwt,
-Octokit.Webhooks.AspNetCore, Yarp.ReverseProxy, FluentValidation, Http.Resilience (Polly v8),
-System.CommandLine 2.0 GA, Azure.Identity/.ResourceManager (reuses spec-005 Pdp.ControlPlane.Inventory
-via its pluggable TokenCredential), Azure.Monitor.OpenTelemetry.AspNetCore, .NET Aspire. TESTS: xUnit +
-Shouldly + NSubstitute; Testcontainers.PostgreSql + Respawn (REQUIRED — ledger/registry/saga/outbox not
-testable in-memory); WireMock.Net (fake GitHub: dispatch inputs, webhook, missed-webhook→reconcile);
-WebApplicationFactory (webhook endpoint). NO prohibited deps (no MediatR/MassTransit/AutoMapper/Moq/
-Serilog/FluentAssertions v8+). Platform context: live platform in WEST US 3; specs 002–005 merged
-(IPAM ledger + westus3 fabric + app1/app2 spokes); the control plane reaches the PRIVATE Postgres CI
-cannot (the Gate-G1 premise).
+Active feature: 007-mcp-chatops (branch `007-mcp-chatops`).
+Current plan: specs/007-mcp-chatops/plan.md — read it for technical context, project structure, and
+constitution gates. Supporting design artifacts: specs/007-mcp-chatops/ research.md, data-model.md,
+quickstart.md, contracts/{hosting-topology,identity-and-auth,mcp-tool-surface}.md.
+Design decisions (clarify + topology 2026-06-18; plan PASS, no constitution deviations): HOST the
+spec-006 control plane in Azure and add a CONVERSATIONAL front-end. Two coupled deliverables: (1)
+PRODUCTION HOSTING — run the existing Pdp.ControlPlane.Api (webhook handler + Wolverine inbox/outbox +
+reconciler) and Pdp.ControlPlane.Ingress (YARP) on AZURE CONTAINER APPS (workload-profiles env,
+VNet-integrated into the EXISTING control-plane VNet 10.0.0.0/24 — same VNet as the private Postgres) so
+they reach the private IPAM-ledger/registry Postgres the laptop cannot; (2) a NEW ASP.NET Core MCP server
+`Pdp.Mcp` (assembly pdp-mcp; MCP C# SDK `ModelContextProtocol.AspNetCore`, STATELESS streamable HTTP) that
+HOSTS THE SPEC-006 VERB LAYER IN-PROCESS — exactly as the `pdp` CLI does (direct ProjectReference to
+Pdp.ControlPlane.Verbs; NO reimplementation, NO new verb). PUBLIC SURFACE = ONE app: the YARP ingress is
+the only external-ingress app and routes /webhooks/github → INTERNAL api and /mcp (+
+/.well-known/oauth-protected-resource) → INTERNAL mcp (clarify 2026-06-18: "one YARP ingress, both
+routes"; tighter Article IX). IDENTITY = PER-APP user-assigned managed identity (clarify): uami-api +
+uami-mcp are Postgres Entra principals (token scope ossrdbms-aad.../.default via
+Microsoft.Azure.PostgreSQL.Auth) + Reader (ARG) + AcrPull + KeyVault Secrets User; uami-ingress = AcrPull
+ONLY. AUTH = MCP endpoint is an OAUTH 2.1 PROTECTED RESOURCE — Entra JWT validated AT THE MCP SERVER
+(AddJwtBearer + .AddMcp PRM; MapInboundClaims=false), single allow-listed owner `oid` (YARP just forwards
+the Authorization header). Article VIII via TWO-TOOL plan→confirm: Plan<Op> returns plan + single-use
+~5-min confirmation TOKEN; Apply/Destroy requires the token + VERBATIM target-name restatement (a chat
+turn can never destroy without it). SECRETS = GitHub App private key + webhook HMAC secret in KEY VAULT,
+pulled via UAMI (ACA KV-backed secrets) — the ONLY non-Azure secret; zero stored cloud secret, no standing
+cloud write credential (infra writes only in OIDC CI). FOOTPRINT = NEW isolated OpenTofu stack
+infra/control-plane-host (own RG + state platform/control-plane-host) consuming VNet/Postgres/DNS BY
+REFERENCE; AVM modules for ACA managedenvironment/containerapp, ACR(Basic), Log Analytics(PerGB2018 +
+daily cap), App Insights(workspace-based), Key Vault; only azurerm UAMI/role are provider resources
+(README-justified, no AVM module). ACA subnet snet-pdp-westus3-aca 10.0.0.32/27 (delegation
+Microsoft.App/environments) DECLARED in the VNet-owning infra/control-plane stack (avoids AVM VNet-module
+subnet drift) and CONSUMED via data source. One-time MANUAL bootstrap: owner (Postgres Entra admin) runs
+pgaadauth_create_principal_with_oid for uami-api/uami-mcp (tofu outputs the psql; single reviewed step per
+SC-010). SCALE: api+ingress always-on (min 1, for webhook+reconciler); mcp scale-to-zero. App Insights
+(workspace-based) receives the env_id-correlated telemetry spec-006 already emits. UNBLOCKS the spec-006
+live acceptance T071/T072 (control plane now in-VNet next to the ledger). NON-GOALS: no new verb, no APIM,
+no multi-user authz, no workload archetypes (spec 8), no second region (spec 9). NO prohibited deps
+(MediatR/MassTransit/AutoMapper/Moq/Serilog/FluentAssertions v8+). Platform context: live platform in WEST
+US 3; specs 002–006 merged; pdp-orchestrator GitHub App set up. NEW: src/Pdp.Mcp (+ tests/Pdp.Mcp.Tests),
+Dockerfiles for api/ingress/mcp, YARP MCP route in Ingress appsettings, infra/control-plane-host stack,
+controlplane-host-images.yml + controlplane-host-destroy.yml workflows.
 <!-- SPECKIT END -->

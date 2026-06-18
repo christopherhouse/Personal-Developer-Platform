@@ -49,6 +49,16 @@
     <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.5.0" />
   </ItemGroup>
 
+  <ItemGroup Label="MCP chatops host (spec 007)">
+    <!-- MCP C# SDK — ASP.NET Core streamable-HTTP server; the tool surface over the verb layer. Preview
+         (pre-1.0); pinned exactly. -->
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.9.0-preview.2" />
+    <!-- Entra OAuth 2.1 protected-resource JWT validation at the MCP endpoint (matches the 10.0.x ASP.NET
+         Core line). NOTE: UAMI->Postgres Entra-token auth uses Npgsql UsePeriodicPasswordProvider +
+         Azure.Identity (research §5) — there is NO Microsoft.Azure.PostgreSQL.Auth package on NuGet. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
+  </ItemGroup>
+
   <ItemGroup Label="Local dev orchestration — .NET Aspire (spec 006)">
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.4.5" />
     <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.4.5" />
