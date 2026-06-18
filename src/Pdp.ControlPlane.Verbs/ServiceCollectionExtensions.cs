@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Pdp.ControlPlane.Dispatch;
 using Pdp.ControlPlane.Inventory;
 using Pdp.ControlPlane.Ipam;
@@ -31,9 +32,20 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the control-plane verb layer's services and binds its options from configuration.
     /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configuration">The host configuration (binds <c>ControlPlane</c> + <c>GitHubApp</c>).</param>
+    /// <param name="dataSource">
+    /// Optional pre-built Npgsql data source for the IPAM + registry DbContexts. The in-VNet hosts
+    /// (spec-007 MCP server / Api) pass an Entra-token data source
+    /// (<see cref="Hosting.EntraPostgres.CreateDataSource"/>) so they reach the private, Entra-only
+    /// Postgres without a password; the CLI / tests pass <see langword="null"/> and keep the plain
+    /// connection-string path. When supplied, the host pairs it with the matching
+    /// <c>ConfigureControlPlaneMessaging(dataSource, …)</c> overload so Wolverine uses the same data source.
+    /// </param>
     public static IServiceCollection AddControlPlaneVerbs(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        NpgsqlDataSource? dataSource = null)
     {
         // --- Options binding --------------------------------------------------------------------
         services.Configure<ControlPlaneOptions>(configuration.GetSection(ControlPlaneOptions.SectionName));
@@ -51,9 +63,9 @@ public static class ServiceCollectionExtensions
         // gain for Wolverine) and activates EF Core transactional middleware + saga support, so an
         // allocate (ipam) + record (registry) + dispatch enqueue commit atomically (research §6).
         services.AddDbContextWithWolverineIntegration<IpamDbContext>(
-            db => db.UseNpgsql(options.PostgresConnectionString));
+            db => UsePlatformPostgres(db, dataSource, options.PostgresConnectionString));
         services.AddDbContextWithWolverineIntegration<RegistryDbContext>(
-            db => db.UseNpgsql(options.PostgresConnectionString));
+            db => UsePlatformPostgres(db, dataSource, options.PostgresConnectionString));
 
         // --- IPAM ledger (Gate-G1; Article VI) --------------------------------------------------
         services.AddScoped<IIpamLedger, Ledger>();
@@ -94,5 +106,25 @@ public static class ServiceCollectionExtensions
         services.AddControlPlaneTelemetry(options);
 
         return services;
+    }
+
+    /// <summary>
+    /// Points a DbContext at the platform Postgres: an Entra-token <paramref name="dataSource"/> when an
+    /// in-VNet host supplied one (no password), otherwise the plain <paramref name="connectionString"/>
+    /// (the CLI / test path). Both schemas (<c>ipam</c>, <c>registry</c>) bind the same source.
+    /// </summary>
+    private static void UsePlatformPostgres(
+        DbContextOptionsBuilder db,
+        NpgsqlDataSource? dataSource,
+        string connectionString)
+    {
+        if (dataSource is not null)
+        {
+            db.UseNpgsql(dataSource);
+        }
+        else
+        {
+            db.UseNpgsql(connectionString);
+        }
     }
 }

@@ -26,3 +26,8 @@ output "postgres_subnet_id" {
   description = "Resource ID of the delegated Postgres subnet."
   value       = module.vnet.subnets["postgres"].resource_id
 }
+
+output "aca_subnet_id" {
+  description = "Resource ID of the ACA delegated subnet (10.0.0.32/27). The spec-007 host stack consumes this by reference for the Container Apps environment's infrastructure_subnet_id (research §10)."
+  value       = module.vnet.subnets["aca"].resource_id
+}

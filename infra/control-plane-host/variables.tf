@@ -38,6 +38,12 @@ variable "aca_subnet_name" {
   default     = "snet-pdp-westus3-aca"
 }
 
+variable "postgres_server_name" {
+  description = "Name of the existing private Postgres flexible server (infra/control-plane output `server_name`). Looked up here for its private FQDN, which the api/mcp apps use to build their Entra-token connection (no password). NOT modified by this stack."
+  type        = string
+  default     = "psql-pdp-westus3-controlplane"
+}
+
 variable "platform_dns_resource_group_name" {
   description = "RG holding the platform-shared private DNS zones (owned by infra/platform-dns). The privatelink.postgres zone is already linked to the control-plane VNet; the same-VNet ACA apps resolve Postgres through it (research §3) — no new link needed here."
   type        = string

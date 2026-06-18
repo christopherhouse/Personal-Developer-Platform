@@ -23,6 +23,27 @@ The ACA subnet (`snet-pdp-westus3-aca` `10.0.0.32/27`, delegation `Microsoft.App
 **declared by the VNet-owning `infra/control-plane` stack** (T008) and **consumed here** via a data
 source — avoiding AVM VNet-module subnet drift (research §10).
 
+## AVM module pins (T009, Article V)
+
+Published AVM (Terraform-flavor) resource modules, pinned **exactly** — all are pre-1.0, so a minor bump
+can change inputs/behavior (research §1). Versions are the latest published as of 2026-06-18:
+
+| Module | Pinned version | Used by |
+|---|---|---|
+| `Azure/avm-res-app-managedenvironment/azurerm` | `0.5.0` | ACA managed environment (T018) |
+| `Azure/avm-res-app-containerapp/azurerm` | `0.9.0` | ingress / api / mcp container apps (T020/T021/T035) |
+| `Azure/avm-res-containerregistry-registry/azurerm` | `0.5.1` | ACR Basic + AcrPull (T015) |
+| `Azure/avm-res-operationalinsights-workspace/azurerm` | `0.5.1` | Log Analytics workspace (T017) |
+| `Azure/avm-res-insights-component/azurerm` | `0.4.0` | Application Insights, workspace-based (T048) |
+| `Azure/avm-res-keyvault-vault/azurerm` | `0.10.2` | Key Vault, RBAC (T016) |
+
+**Smoke validation (Article V)**: each module block is added with its exact pin in US1/US2/US4
+(T015–T021, T035, T048) and smoke-validated under the pinned OpenTofu 1.11.x via `tofu init` +
+`tofu validate` on this stack at that point — the same inline-smoke-finding discipline the
+`infra/control-plane` stack used for its Postgres/VNet AVM modules (e.g. the firewall-rules override
+recorded there). Any input/default surprise found at smoke time is recorded against the offending module
+block here. Provider pins (`azurerm ~> 4.77`, `azapi ~> 2.7`) are in `versions.tf`.
+
 ## Article V — non-AVM resource justification
 
 `azurerm_user_assigned_identity` and `azurerm_role_assignment` are used directly: **there is no AVM

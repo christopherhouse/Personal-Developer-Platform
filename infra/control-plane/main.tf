@@ -75,6 +75,24 @@ module "vnet" {
         locations = [local.region, "eastus"]
       }]
     }
+
+    # ACA delegated subnet for the spec-007 control-plane host (Container Apps managed environment).
+    # Declared HERE, in the VNet-owning stack, rather than in infra/control-plane-host: the AVM VNet
+    # module manages its `subnets` map and does not ignore_changes, so a subnet created out-of-band would
+    # be deleted on the next VNet apply (research §10). 10.0.0.32/27 (.32–.63) is carved from the seeded
+    # 10.0.0.0/24 reservation — NOT invented (Article VI); it does not overlap the Postgres /28 at .0–.15.
+    # Delegated to Microsoft.App/environments (workload-profiles env injection). The host stack CONSUMES
+    # this subnet via an azurerm_subnet data source (infra/control-plane-host/data.tf, T010).
+    aca = {
+      name             = "snet-pdp-${local.region}-aca"
+      address_prefixes = ["10.0.0.32/27"]
+      delegations = [{
+        name = "aca-environments"
+        service_delegation = {
+          name = "Microsoft.App/environments"
+        }
+      }]
+    }
   }
 
   enable_telemetry = false
