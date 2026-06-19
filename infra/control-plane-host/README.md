@@ -30,7 +30,7 @@ can change inputs/behavior (research §1). Versions are the latest published as 
 
 | Module | Pinned version | Used by |
 |---|---|---|
-| `Azure/avm-res-app-managedenvironment/azurerm` | `0.5.0` | ACA managed environment (T018) |
+| `Azure/avm-res-app-managedenvironment/azurerm` | `0.4.0` | ACA managed environment (T018) |
 | `Azure/avm-res-app-containerapp/azurerm` | `0.9.0` | ingress / api / mcp container apps (T020/T021/T035) |
 | `Azure/avm-res-containerregistry-registry/azurerm` | `0.5.1` | ACR Basic + AcrPull (T015) |
 | `Azure/avm-res-operationalinsights-workspace/azurerm` | `0.5.1` | Log Analytics workspace (T017) |
@@ -43,6 +43,24 @@ can change inputs/behavior (research §1). Versions are the latest published as 
 `infra/control-plane` stack used for its Postgres/VNet AVM modules (e.g. the firewall-rules override
 recorded there). Any input/default surprise found at smoke time is recorded against the offending module
 block here. Provider pins (`azurerm ~> 4.77`, `azapi ~> 2.7`) are in `versions.tf`.
+
+**Smoke findings (T015–T021, US1):**
+
+- **`avm-res-app-managedenvironment` pinned to `0.4.0`, NOT `0.5.0`.** v0.5.0's `managed_certificates`
+  and `storages` submodules declare `required_version = "~> 1.12"`, which fails `tofu init` under our
+  constitution-pinned OpenTofu 1.11.x. v0.4.0 allows `>= 1.10, < 2.0` across root + all submodules. Its
+  input surface differs: a **flat `infrastructure_subnet_id`** (no `vnet_configuration` object, and no
+  `internal` flag — with a subnet the environment defaults to the EXTERNAL public LB, which is exactly the
+  posture we want so GitHub can reach the webhook); **`workload_profile`** (singular `set`) instead of
+  `workload_profiles`; **`zone_redundancy_enabled`** instead of `zone_redundant`. Output `resource_id` is
+  unchanged. This is the documented bump; revisit when a ≥0.5.x line restores OpenTofu 1.11 support.
+- **`avm-res-app-containerapp` `0.9.0`** is 1.11-compatible (`required_version = "~> 1.11"`, no submodules).
+  Note: its app-URL output is **`fqdn_url`** (a full `https://…` URL), not a bare `fqdn`; `secrets` is a
+  `map(object)`; credential-free pull uses `registries[].identity` (a UAMI resource id).
+- **Key Vault secret values are NOT declared in this stack.** The `avm-res-keyvault-vault` module writes
+  any `secrets_value` into tofu state; to satisfy SC-007 (no secret in state) we provision the vault + RBAC
+  only and seed the two secret values out-of-band (runbook step 2). The apps reference them by constructed
+  versionless KV URI (`<vault-uri>secrets/<name>`), which ACA resolves at runtime via the app UAMI.
 
 ## Article V — non-AVM resource justification
 

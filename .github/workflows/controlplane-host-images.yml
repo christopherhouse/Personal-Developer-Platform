@@ -1,0 +1,73 @@
+name: controlplane-host-images
+
+# Build + push the three control-plane-host container images (api / ingress / mcp) to the stack's ACR
+# over GitHub OIDC — NO registry secret, no admin user (Article IX, FR-012; research §7). The apps pull
+# these images credential-free via their per-app UAMI (AcrPull). Images are tagged with the commit SHA
+# (reproducible deploys: set infra/control-plane-host var image_tag to the SHA) and `latest` (first
+# bring-up). OpenTofu never runs here — this workflow only produces images; the host stack is applied by
+# the iac-apply rails.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "Directory.Build.props"
+      - "Directory.Packages.props"
+      - "global.json"
+      - ".github/workflows/controlplane-host-images.yml"
+  workflow_dispatch: # manual rebuild (e.g. to push a `latest` before the first apply)
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for azure/login + ACR token exchange
+
+env:
+  ACR_NAME: crpdpwestus3controlplane
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            repository: pdp-api
+            dockerfile: src/Pdp.ControlPlane.Api/Dockerfile
+          - app: ingress
+            repository: pdp-ingress
+            dockerfile: src/Pdp.ControlPlane.Ingress/Dockerfile
+          - app: mcp
+            repository: pdp-mcp
+            dockerfile: src/Pdp.Mcp/Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+
+      # OIDC federation — plain repo variables, zero stored secrets (matches the iac rails).
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Exchanges the azure/login token for an ACR token — no username/password, no admin user.
+      - name: ACR login (token, no secret)
+        run: az acr login --name "$ACR_NAME"
+
+      # Build context = repository ROOT (the Dockerfiles COPY global.json + Directory.*.props + src/).
+      - name: Build and push ${{ matrix.app }}
+        run: |
+          server="${ACR_NAME}.azurecr.io"
+          image="${server}/${{ matrix.repository }}"
+          docker build \
+            -f "${{ matrix.dockerfile }}" \
+            -t "${image}:${GITHUB_SHA}" \
+            -t "${image}:latest" \
+            .
+          docker push "${image}:${GITHUB_SHA}"
+          docker push "${image}:latest"
+
+      - name: Image traceability
+        if: always()
+        run: echo "Pushed ${{ matrix.repository }}:${GITHUB_SHA} (+latest) to ${ACR_NAME}.azurecr.io" >> "$GITHUB_STEP_SUMMARY"

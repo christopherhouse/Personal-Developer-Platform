@@ -3,7 +3,7 @@
 
 provider "registry.opentofu.org/azure/azapi" {
   version     = "2.10.0"
-  constraints = "~> 2.7"
+  constraints = ">= 1.13.0, ~> 2.4, ~> 2.5, ~> 2.6, ~> 2.7, < 3.0.0"
   hashes = [
     "h1:VMEPYNpMeets2y6F8OIBPRI2xqg6/4w8OABcSvKKr+M=",
     "zh:1e6513c791c6be1389fc4acb8ffdd5127dbf0f479bd0c0074d3a5b69edee2faa",
@@ -43,7 +43,7 @@ provider "registry.opentofu.org/azure/modtm" {
 
 provider "registry.opentofu.org/hashicorp/azurerm" {
   version     = "4.77.0"
-  constraints = "~> 4.77.0"
+  constraints = ">= 3.117.0, >= 4.0.0, ~> 4.0, >= 4.36.0, ~> 4.77.0, < 5.0.0"
   hashes = [
     "h1:E4pu778ZUm+Rtd5XWY7055WYwd71Mj9d8X6X6YoW7fs=",
     "zh:069380755ceab81d9f11f6da5ca35c60c75115b38c02e82adf07e4f9f488d593",
@@ -66,7 +66,7 @@ provider "registry.opentofu.org/hashicorp/azurerm" {
 
 provider "registry.opentofu.org/hashicorp/random" {
   version     = "3.9.0"
-  constraints = "~> 3.7"
+  constraints = "~> 3.0, >= 3.5.0, ~> 3.5, ~> 3.6, ~> 3.7, < 5.0.0"
   hashes = [
     "h1:ig2s1IS9IzehorRjvVAnKIsUUj8fkgyxct1L/kswcc4=",
     "zh:03f1114cc20b8913523735ab76e0f0a2b16ce13c92923a53304bf85f07fc0dbc",
@@ -89,7 +89,7 @@ provider "registry.opentofu.org/hashicorp/random" {
 
 provider "registry.opentofu.org/hashicorp/time" {
   version     = "0.14.0"
-  constraints = "~> 0.13"
+  constraints = "~> 0.9, ~> 0.13"
   hashes = [
     "h1:8BLHeBjRS/J2SB2jX/APsNqaCoW957ItWwYHB2tDJxQ=",
     "zh:155688768de4c53bc6523c5fed46aa4a74c8fc8cab25ea808ce2ff24e2f5ae83",

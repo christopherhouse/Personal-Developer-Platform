@@ -13,6 +13,8 @@ using Npgsql;
 using Pdp.ControlPlane.Verbs;
 using Pdp.ControlPlane.Verbs.Hosting;
 using Pdp.Mcp.Auth;
+using Pdp.Mcp.Confirm;
+using Pdp.Mcp.Tools;
 using Wolverine;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -73,11 +75,19 @@ builder.UseWolverine(opts =>
     }
 });
 
+// The plan→confirm token store backing the Article VIII gate on the conversational surface (data-model §5).
+// Singleton so a token issued by a Plan… tool is redeemable by its Apply…/Destroy… on the same replica.
+builder.Services.AddSingleton<IConfirmationTokens>(sp =>
+    new ConfirmationTokenService(sp.GetService<TimeProvider>()));
+
 // MCP server over STATELESS streamable HTTP — fits ACA scale-to-zero (no session affinity; any replica or
-// cold start serves any call). Tool classes are added in US2/US3 (T034/T046); none yet.
+// cold start serves any call). The verb tools are registered explicitly (not assembly-scan): US2 mutate +
+// destroy (T034); US3 adds the read tools (T046). Each is a thin adapter over the spec-006 verb layer.
 builder.Services
     .AddMcpServer()
-    .WithHttpTransport(options => options.Stateless = true);
+    .WithHttpTransport(options => options.Stateless = true)
+    .WithTools<SpokeTools>()
+    .WithTools<FabricTools>();
 
 // Entra OAuth 2.1 protected-resource auth: JWT validation + PRM publication + the single-owner oid policy.
 builder.Services.AddOwnerAuthorization(builder.Configuration);
@@ -90,9 +100,10 @@ app.UseAuthorization();
 // Liveness probe (no auth) for the ACA health check.
 app.MapGet("/healthz", () => Results.Ok("pdp-mcp: up (spec 007)"));
 
-// The MCP endpoint, gated to the owner. The PRM discovery document is published by AddOwnerAuthorization at
+// The MCP endpoint at /mcp, gated to the owner (the YARP ingress forwards /mcp path-preserving — contracts/
+// hosting-topology.md). The PRM discovery document is published by AddOwnerAuthorization at
 // /.well-known/oauth-protected-resource; an unauthenticated call is challenged there (401 + WWW-Authenticate).
-app.MapMcp().RequireAuthorization(OwnerAuthorization.PolicyName);
+app.MapMcp("/mcp").RequireAuthorization(OwnerAuthorization.PolicyName);
 
 app.Run();
 

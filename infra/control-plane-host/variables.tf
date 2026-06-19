@@ -49,3 +49,76 @@ variable "platform_dns_resource_group_name" {
   type        = string
   default     = "rg-pdp-westus3-dns"
 }
+
+# ---------------------------------------------------------------------------
+# Postgres (the existing private ledger) — connection coordinates the apps use.
+# ---------------------------------------------------------------------------
+
+variable "postgres_database_name" {
+  description = "Database on the existing flexible server that holds the ipam/registry/wolverine schemas (spec 006). Matches the migrated database (local-dev convention is `pdp`); pinned at live deploy (T026) against the actual migrated DB."
+  type        = string
+  default     = "pdp"
+}
+
+# ---------------------------------------------------------------------------
+# Container images — pushed to this stack's ACR by controlplane-host-images.yml over OIDC (T024).
+# ---------------------------------------------------------------------------
+
+variable "image_tag" {
+  description = "Image tag to deploy for all three apps (e.g. the commit SHA the images workflow pushed). `latest` for first bring-up; pin to a SHA for reproducible deploys."
+  type        = string
+  default     = "latest"
+}
+
+variable "api_image_repository" {
+  description = "ACR repository name for the Pdp.ControlPlane.Api image."
+  type        = string
+  default     = "pdp-api"
+}
+
+variable "ingress_image_repository" {
+  description = "ACR repository name for the Pdp.ControlPlane.Ingress (YARP) image."
+  type        = string
+  default     = "pdp-ingress"
+}
+
+variable "mcp_image_repository" {
+  description = "ACR repository name for the Pdp.Mcp image (consumed by the mcp app in US2/T035)."
+  type        = string
+  default     = "pdp-mcp"
+}
+
+# ---------------------------------------------------------------------------
+# GitHub App (pdp-orchestrator) — NON-SECRET coordinates only. The private key + webhook HMAC secret are
+# NEVER variables: they are seeded into Key Vault out-of-band and read at runtime via the app UAMI.
+# ---------------------------------------------------------------------------
+
+variable "github_app_id" {
+  description = "The pdp-orchestrator GitHub App id (non-secret)."
+  type        = number
+  default     = 0 # set in tfvars / CI for the live deploy
+}
+
+variable "github_app_installation_id" {
+  description = "The pdp-orchestrator App installation id on the target repo's account (non-secret)."
+  type        = number
+  default     = 0 # set in tfvars / CI for the live deploy
+}
+
+variable "github_repo_owner" {
+  description = "Owner (org or user) of the repo hosting the dispatch workflows."
+  type        = string
+  default     = "Personal-Developer-Platform"
+}
+
+variable "github_repo_name" {
+  description = "Name of the repo hosting the dispatch workflows."
+  type        = string
+  default     = "Personal-Developer-Platform"
+}
+
+variable "github_default_branch" {
+  description = "Default branch the control plane dispatches workflow_dispatch against."
+  type        = string
+  default     = "main"
+}

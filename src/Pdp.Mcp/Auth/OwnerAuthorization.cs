@@ -27,6 +27,10 @@ public static class OwnerAuthorization
         var auth = configuration.GetSection(McpAuthOptions.SectionName).Get<McpAuthOptions>()
                    ?? new McpAuthOptions();
 
+        // Expose the bound options for DI so the tools' owner check (OwnerTool.EnsureOwner) reads the same
+        // single allow-listed oid the OwnerOnly policy enforces.
+        services.Configure<McpAuthOptions>(configuration.GetSection(McpAuthOptions.SectionName));
+
         // Single-tenant v2.0 issuer = authorization server = the only valid token issuer.
         var authority = $"https://login.microsoftonline.com/{auth.TenantId}/v2.0";
 
