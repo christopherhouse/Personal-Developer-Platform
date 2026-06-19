@@ -6,7 +6,7 @@ name: iac-apply
 # GitHub); push-triggered applies are then blocked by the guard until the fix-forward PR
 # is merged and the owner re-runs this workflow manually (workflow_dispatch).
 #
-# TWO PHASES, because of cross-stack ordering dependencies:
+# THREE PHASES, because of cross-stack ordering dependencies:
 #   * Phase 1 (job `apply`): foundations + platform-dns apply in parallel. Neither depends on
 #     another stack. platform-dns creates the platform-shared Private DNS zones.
 #   * Phase 2 (job `apply-dependent`): control-plane + fabric, which `needs` Phase 1. BOTH read
@@ -14,6 +14,11 @@ name: iac-apply
 #     (control-plane → privatelink.postgres for its VNet-integrated server; fabric → the hub
 #     zone links), so the zones MUST already exist. Running them parallel to platform-dns raced
 #     the data lookup and failed; gating them behind Phase 1 removes the race.
+#   * Phase 3 (job `apply-host`, spec 007): control-plane-host, which `needs` Phase 2. It reads
+#     control-plane's ACA subnet + the private Postgres via data sources at plan time, so the
+#     control-plane stack (incl. the snet-pdp-westus3-aca subnet) MUST be applied first. On first
+#     bring-up the subnet lands in a PRIOR merge (the data source can't resolve a subnet that has
+#     never been applied) — see infra/control-plane-host/README.md.
 
 on:
   push:
@@ -101,13 +106,64 @@ jobs:
   # ---------------------------------------------------------------------------
   apply-dependent:
     needs: apply
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         stack: [control-plane, fabric]
     concurrency:
       group: tofu-${{ matrix.stack }}   # fabric shares its group with fabric-destroy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: infra/${{ matrix.stack }}
+    runs-on: ubuntu-latest
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -out=tfplan | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu apply
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: |
+          echo "Applied stack '${{ matrix.stack }}' at commit: ${{ github.sha }} (event: ${{ github.event_name }})" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Phase 3 (spec 007) — control-plane-host. Gated on Phase 2: it reads control-plane's ACA subnet
+  # + the private Postgres via data sources at plan time, so control-plane must be applied first.
+  # ---------------------------------------------------------------------------
+  apply-host:
+    needs: apply-dependent
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [control-plane-host]
+    concurrency:
+      group: tofu-${{ matrix.stack }}   # shares its group with controlplane-host-destroy
       cancel-in-progress: false
     defaults:
       run:

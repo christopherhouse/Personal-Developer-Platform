@@ -45,7 +45,14 @@ command -v tofu  >/dev/null || die "tofu not found (run from infra/control-plane
 command -v base64 >/dev/null || die "base64 not found"
 
 log "Reading stack coordinates from tofu output…"
-ctx_json="$(tofu output -json bootstrap_context)" || die "could not read 'bootstrap_context' output — apply the stack first, and run from infra/control-plane-host"
+ctx_json="$(tofu output -json bootstrap_context 2>/dev/null || true)"
+if [ -z "$ctx_json" ]; then
+  # The local dir may not be init'd against the real backend (e.g. only -backend=false for validation).
+  log "tofu backend not initialized here — running 'tofu init -reconfigure' (read-only)…"
+  tofu init -reconfigure -input=false >/dev/null || die "tofu init failed — check: run from infra/control-plane-host, az login is valid, and you can reach the state storage account (overnight policy may have disabled its public network access)"
+  ctx_json="$(tofu output -json bootstrap_context 2>/dev/null || true)"
+fi
+[ -n "$ctx_json" ] || die "no 'bootstrap_context' output — the host stack is NOT applied yet. This is a POST-deploy step: deploy infra/control-plane-host first (CI apply-on-merge / iac-apply), THEN re-run this."
 jqf() { printf '%s' "$ctx_json" | python -c "import sys,json;print(json.load(sys.stdin)['$1'])" 2>/dev/null \
         || printf '%s' "$ctx_json" | sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p"; }
 RG="$(jqf resource_group)"

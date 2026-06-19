@@ -42,7 +42,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stack: [foundations, control-plane, platform-dns, fabric]   # matrix-ready; later stacks add entries here
+        # spec 007: control-plane-host plans its data sources (control-plane's ACA subnet + the private
+        # Postgres) at plan time, so it only plans cleanly once control-plane (incl. the snet-pdp-westus3-aca
+        # subnet) is already APPLIED. On first bring-up, merge the subnet (infra/control-plane) first, then
+        # the host stack — see infra/control-plane-host/README.md.
+        stack: [foundations, control-plane, platform-dns, fabric, control-plane-host]
     defaults:
       run:
         working-directory: infra/${{ matrix.stack }}

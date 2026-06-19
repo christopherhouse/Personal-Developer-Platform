@@ -49,8 +49,18 @@ foreach ($t in @('az', 'tofu')) {
 }
 
 Write-Step 'Reading stack coordinates from tofu output...'
-$ctxJson = tofu output -json bootstrap_context
-Assert-LastExit "could not read 'bootstrap_context' output - apply the stack first, and run from infra/control-plane-host"
+$ctxJson = tofu output -json bootstrap_context 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $ctxJson) {
+  # The local dir may not be init'd against the real backend (e.g. only `-backend=false` was used for
+  # validation). Re-init read-only and retry before concluding the stack is unapplied.
+  Write-Step 'tofu backend not initialized here - running "tofu init -reconfigure" (read-only)...'
+  tofu init -reconfigure -input=false | Out-Null
+  Assert-LastExit 'tofu init failed - check: run from infra/control-plane-host, az login is valid, and you can reach the state storage account (the overnight policy may have disabled its public network access)'
+  $ctxJson = tofu output -json bootstrap_context 2>$null
+}
+if ($LASTEXITCODE -ne 0 -or -not $ctxJson) {
+  Die 'no "bootstrap_context" output - the host stack is NOT applied yet. This is a POST-deploy step: deploy infra/control-plane-host first (CI apply-on-merge / iac-apply), THEN re-run this.'
+}
 $ctx = $ctxJson | ConvertFrom-Json
 $RG = $ctx.resource_group
 $EnvId = $ctx.aca_environment_id
