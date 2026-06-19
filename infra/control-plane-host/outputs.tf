@@ -56,11 +56,41 @@ output "uami_mcp" {
   }
 }
 
+# --- Application Insights (US4) ----------------------------------------------
+
+output "application_insights" {
+  description = "Workspace-based Application Insights (T048): resource id + name + the connection string the api/mcp apps export env_id-correlated telemetry to (already wired onto the apps as APPLICATIONINSIGHTS_CONNECTION_STRING — T049)."
+  sensitive   = true # connection_string carries the ingestion credential
+  value = {
+    resource_id       = module.application_insights.resource_id
+    name              = module.application_insights.name
+    connection_string = module.application_insights.connection_string
+  }
+}
+
 # --- Key Vault ----------------------------------------------------------------
 
 output "key_vault_uri" {
   description = "Key Vault URI. Seed the GitHub App private key + webhook secret here out-of-band before applying the apps (runbook step 2): az keyvault secret set --vault-name <name> --name github-app-private-key/--name github-webhook-secret --file/--value ..."
   value       = module.key_vault.uri
+}
+
+# --- Coordinates for the transient-ACA-Job bootstrap helper (scripts/bootstrap-postgres-principals.sh) ---
+#
+# The helper creates a short-lived ACA Job in THIS stack's managed environment (so it runs IN-VNet and can
+# reach the private ledger), authenticated as the owner via a freshly-minted oss-rdbms token passed as a job
+# secret. These are the non-secret coordinates it needs; the owner UPN + token are supplied at runtime by az.
+output "bootstrap_context" {
+  description = "Non-secret coordinates for scripts/bootstrap-postgres-principals.sh: the RG + ACA environment (where the transient in-VNet psql Job runs) and the private ledger FQDN/database it connects to."
+  value = {
+    resource_group          = azurerm_resource_group.host.name
+    aca_environment_name    = local.aca_env_name
+    aca_environment_id      = module.managed_environment.resource_id
+    ledger_fqdn             = data.azurerm_postgresql_flexible_server.ledger.fqdn
+    postgres_database       = var.postgres_database_name
+    uami_api_principal_name = azurerm_user_assigned_identity.api.name
+    uami_mcp_principal_name = azurerm_user_assigned_identity.mcp.name
+  }
 }
 
 # --- The one-time Postgres principal bootstrap (SC-010 single reviewed manual step) ---

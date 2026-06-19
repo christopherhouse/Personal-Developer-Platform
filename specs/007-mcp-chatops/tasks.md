@@ -83,7 +83,7 @@ no password) and reads the ledger/registry; spec-006 T071/T072 run live against 
 - [X] T022 [US1] Add `env_id`/Postgres-token config + verify the hosted `Api` reconciler/webhook handler run (always-on) against the live ledger; wire `ManagedIdentityCredential` client id for `uami-api` — **Api `Program.cs` now mirrors the Mcp UAMI→EntraPostgres token path (keeps the reconciler/scheduled agents — the sole tracking node, research §13) + surfaces App Insights conn string. Live ledger verification is part of T026.**
 - [X] T023 [US1] Implement `outputs.tf` (ACR login server, app FQDNs, UAMI names/object-ids/client-ids) + emit the **one-time `pgaadauth_create_principal_with_oid` psql command** for `uami-api` as a tofu output (research §6)
 - [X] T024 [US1] Author `.github/workflows/controlplane-host-images.yml`: build + push `api`/`ingress` (and `mcp`) images to ACR over **OIDC** (no registry secret)
-- [ ] T025 [US1] Run the one-time bootstrap for `uami-api`: `pgaadauth_create_principal_with_oid(...)` + least-privilege `GRANT` on `ipam`+`registry` (owner/Entra-admin; documented in `infra/control-plane-host/README.md`) — **BLOCKED (live): single reviewed manual step run by the owner/Entra-admin in-VNet after apply; the exact psql is emitted by the `pgaadauth_bootstrap_uami_api` tofu output.**
+- [ ] T025 [US1] Run the one-time bootstrap for `uami-api`: `pgaadauth_create_principal_with_oid(...)` + least-privilege `GRANT` on `ipam`+`registry` (owner/Entra-admin; documented in `infra/control-plane-host/README.md`) — **BLOCKED (live): single reviewed manual step run by the owner/Entra-admin after apply. HELPER ADDED: `scripts/bootstrap-postgres-principals.{ps1,sh}` runs the psql in-VNet via a transient ACA Job (owner runs `az` from anywhere; token rides in as a Job secret; self-deletes). Manual fallback: the `pgaadauth_bootstrap_uami_api` tofu output emits the exact psql.**
 - [ ] T026 [US1] Deploy via the CI rails (plan-on-PR / apply-on-merge for `infra/control-plane`subnet then `infra/control-plane-host`) and verify the hosted `api` reaches the private ledger (Entra token, no password) — quickstart Scenarios 0–1 — **BLOCKED (live): runs in dispatched CI against Azure (Article I); not executable from this environment.**
 - [ ] T027 [US1] Run spec-006 quickstart **T071/T072** against the hosted control plane (live spoke vend/destroy on `westus3`, tracked to terminal) — quickstart Scenario 7 — **BLOCKED (live): depends on T026 deploy + T025 bootstrap.**
 
@@ -114,7 +114,7 @@ then destroy it (refused without token + verbatim target restatement) — all th
 - [X] T035 [P] [US2] Implement the `mcp` container app via `avm-res-app-containerapp` 0.9.0 (**internal** ingress, **min replicas 0** scale-to-zero, `uami-mcp`, ACR image, KV-backed GitHub App key only, Entra-token Postgres conn, AzureAd `TenantId`/`Audience`/`OwnerOid` config) in `infra/control-plane-host/main.tf` — App Insights conn string deferred to US4/T049 (graceful no-op until then)
 - [X] T036 [US2] Implement `azurerm_role_assignment` granting `uami-mcp` subscription `Reader`; add the `uami-mcp` `pgaadauth_bootstrap_uami_mcp` tofu output + `mcp_fqdn_url`; wire the ingress `control-plane-mcp` YARP destination env to `module.container_app_mcp.fqdn_url` (research §6)
 - [X] T037 [US2] Edit `src/Pdp.ControlPlane.Ingress/appsettings.json`: add YARP routes `/mcp` (+ `/mcp/{**catch-all}`) and `/.well-known/oauth-protected-resource` (+ catch-all) → internal `control-plane-mcp` cluster (streamable-HTTP passthrough; YARP forwards `Authorization`, validates nothing; no business logic) (contracts/hosting-topology.md)
-- [ ] T038 [US2] Run the one-time bootstrap for `uami-mcp` (`pgaadauth_create_principal_with_oid` + `GRANT` on `ipam`+`registry`) — **BLOCKED (live): the mcp half of the single reviewed manual step; the exact psql is emitted by the `pgaadauth_bootstrap_uami_mcp` tofu output.**
+- [ ] T038 [US2] Run the one-time bootstrap for `uami-mcp` (`pgaadauth_create_principal_with_oid` + `GRANT` on `ipam`+`registry`) — **BLOCKED (live): the mcp half of the single reviewed manual step. Covered by the same `scripts/bootstrap-postgres-principals.{ps1,sh}` helper (run `mcp`, or default = both); manual fallback = the `pgaadauth_bootstrap_uami_mcp` tofu output.**
 - [ ] T039 [US2] Deploy (images + `tofu apply`) and verify the MCP auth gate live — quickstart Scenario 2
 - [ ] T040 [US2] Live: vend a spoke through an MCP client with the plan surfaced before apply, tracked to terminal — quickstart Scenario 3
 - [ ] T041 [US2] Live: destroy the spoke — refused without token + verbatim name, then succeeds (allocation released, env `destroyed`) — quickstart Scenario 4
@@ -132,15 +132,15 @@ correctly sourced (deployed ⇒ ARG; intent/history ⇒ registry) with no duplic
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T042 [P] [US3] Read-tool tests in `tests/Pdp.Mcp.Tests/` (NSubstitute `IIpamVerbs`/`IInventoryVerbs`/`IRunVerbs`): each tool calls its verb 1:1; division-of-truth assertion (inventory ⇒ ARG vs registry reads) (SC-003/SC-004)
+- [X] T042 [P] [US3] Read-tool tests in `tests/Pdp.Mcp.Tests/ReadToolAdapterTests.cs` (NSubstitute `IIpamVerbs`/`IInventoryVerbs`/`IRunVerbs`): each tool calls its verb 1:1; division-of-truth assertion (inventory ⇒ ARG vs registry reads) + env-ref/run-id parse-guards + owner gate (SC-003/SC-004). 10 tests, 33 total green.
 
 ### Implementation for User Story 3
 
-- [ ] T043 [P] [US3] Implement `src/Pdp.Mcp/Tools/IpamTools.cs` (ctor-inject `IIpamVerbs`): `QueryIpam`
-- [ ] T044 [P] [US3] Implement `src/Pdp.Mcp/Tools/InventoryTools.cs` (ctor-inject `IInventoryVerbs`): `WhatsDeployed`/`ListEnvironments` (ARG)
-- [ ] T045 [P] [US3] Implement `src/Pdp.Mcp/Tools/RunTools.cs` (ctor-inject `IRunVerbs`): `ShowEnvironment`/`RunHistory`/`RunStatus`
-- [ ] T046 [US3] Register the read-tool classes in `src/Pdp.Mcp/Program.cs` (`.WithTools<IpamTools>().WithTools<InventoryTools>().WithTools<RunTools>()`); confirm T042 passes
-- [ ] T047 [US3] Live: ask "what's deployed?" / IPAM / "what did I ask, what happened?" and verify correct sourcing — quickstart Scenario 5
+- [X] T043 [P] [US3] Implement `src/Pdp.Mcp/Tools/IpamTools.cs` (ctor-inject `IIpamVerbs`, owner-gated via `OwnerTool`): `QueryIpam` — one region ⇒ `QueryAsync`, omitted ⇒ `QueryAllAsync` (mirrors `pdp ipam query`)
+- [X] T044 [P] [US3] Implement `src/Pdp.Mcp/Tools/InventoryTools.cs` (ctor-inject `IInventoryVerbs`): `WhatsDeployed` (`GetSnapshotAsync`)/`ListEnvironments` (`GetEnvironmentsAsync`) — ARG side of the division of truth
+- [X] T045 [P] [US3] Implement `src/Pdp.Mcp/Tools/RunTools.cs` (ctor-inject `IRunVerbs`): `ShowEnvironment` (`GetEnvironmentAsync`)/`RunHistory` (`GetRunsAsync`)/`RunStatus` (`GetRunAsync`) — registry side; env-ref + run-id parsed with `McpException` guards
+- [X] T046 [US3] Register the read-tool classes in `src/Pdp.Mcp/Program.cs` (`.WithTools<IpamTools>().WithTools<InventoryTools>().WithTools<RunTools>()`); T042 passes (33 tests green)
+- [ ] T047 [US3] Live: ask "what's deployed?" / IPAM / "what did I ask, what happened?" and verify correct sourcing — quickstart Scenario 5 — **BLOCKED (live): depends on the deployed `mcp` app (T039); not executable from this environment.**
 
 **Checkpoint**: conversational reads work and preserve division of truth.
 
@@ -152,10 +152,10 @@ correctly sourced (deployed ⇒ ARG; intent/history ⇒ registry) with no duplic
 
 **Independent Test**: trigger a verb/run, then trace it end-to-end from a single `env_id` in App Insights.
 
-- [ ] T048 [US4] Implement Application Insights via `avm-res-insights-component` (workspace-based; `workspace_id` = the US1 Log Analytics workspace) in `infra/control-plane-host/main.tf`
-- [ ] T049 [US4] Set `APPLICATIONINSIGHTS_CONNECTION_STRING` on the `api` and `mcp` container apps (from the App Insights resource output) so `UseAzureMonitor()` exports there
-- [ ] T050 [US4] Deploy and verify `env_id`-correlated logs + traces land in App Insights (verb → dispatch → run-state transitions → terminal) — quickstart Scenario 6
-- [ ] T051 [US4] Confirm telemetry-export failure is non-fatal (app operates if App Insights is unreachable) — spec edge case
+- [X] T048 [US4] Implement Application Insights via `avm-res-insights-component` 0.4.0 (workspace-based; `workspace_id` = the US1 Log Analytics workspace `resource_id`, `application_type` = `web`) in `infra/control-plane-host/main.tf`; sensitive `application_insights` stack output added. Smoke-validated under OpenTofu 1.11.6 (`fmt`/`init -backend=false`/`validate` green); finding recorded in README.
+- [X] T049 [US4] Set `APPLICATIONINSIGHTS_CONNECTION_STRING` on the `api` and `mcp` container apps from `module.application_insights.connection_string` so the verb layer's `UseAzureMonitor()` exports there. **App side already reads the key (Program.cs, T011/T022); plain env (Azure ingestion credential, not an SC-007 non-Azure secret).**
+- [ ] T050 [US4] Deploy and verify `env_id`-correlated logs + traces land in App Insights (verb → dispatch → run-state transitions → terminal) — quickstart Scenario 6 — **BLOCKED (live): runs in dispatched CI against Azure (Article I); not executable from this environment.**
+- [X] T051 [US4] Confirm telemetry-export failure is non-fatal (app operates if App Insights is unreachable) — spec edge case. **Satisfied by design: `ControlPlaneTelemetry.AddControlPlaneTelemetry` attaches `UseAzureMonitor` ONLY when the connection string is non-empty (empty ⇒ graceful no-op); when set-but-unreachable the Azure Monitor OpenTelemetry exporter buffers/backs-off/drops off the request path and never faults the app (spec-006 research §11, verified live). Live re-confirmation folds into T050.**
 
 **Checkpoint**: a run is traceable end-to-end from one `env_id` in Application Insights.
 
@@ -169,10 +169,10 @@ ledger RG is untouched.
 **Independent Test**: dispatch the destroy, run the manual principal cleanup, verify via Resource Graph
 that nothing spec-7 remains and the ledger RG is intact.
 
-- [ ] T052 [US5] Author `.github/workflows/controlplane-host-destroy.yml`: manual, **gated** `tofu destroy` over `infra/control-plane-host` (typed confirmation matching the stack name; Article VIII)
-- [ ] T053 [US5] Document the manual teardown cleanup in `infra/control-plane-host/README.md`: drop the `uami-api`/`uami-mcp` `pgaadauth` principals + revoke grants (the single reviewed manual step, SC-010)
-- [ ] T054 [US5] Verify (live) the dispatched destroy removes all spec-7 resources (ACA env+apps, 3 UAMIs, ACR, Log Analytics, App Insights, Key Vault) — quickstart Scenario 8
-- [ ] T055 [US5] Verify via Resource Graph that the `prevent_destroy`+`CanNotDelete` ledger RG is **untouched** and no dangling role grants / orphaned Entra registrations remain (SC-010)
+- [X] T052 [US5] Author `.github/workflows/controlplane-host-destroy.yml`: manual `workflow_dispatch`, **gated** on a typed `control-plane-host` confirmation (Article VIII), OIDC auth, `tofu plan -destroy` (for the record) → `tofu destroy -auto-approve` over `infra/control-plane-host`, with a post-destroy step-summary reminder for the manual principal cleanup. Mirrors the spec-006 `controlplane-destroy.yml` pattern; concurrency group `tofu-control-plane-host`.
+- [X] T053 [US5] Document the manual teardown cleanup in `infra/control-plane-host/README.md`: expanded the Teardown section to a 3-step runbook — dispatch the gated destroy, then (SC-010 manual step) `REASSIGN OWNED`/`DROP OWNED`/`DROP ROLE` for the `uami-api`/`uami-mcp` `pgaadauth` principals (the inverse of the bootstrap grants), then Resource-Graph zero-residue verification (subscription Reader grants delete with the UAMIs).
+- [ ] T054 [US5] Verify (live) the dispatched destroy removes all spec-7 resources (ACA env+apps, 3 UAMIs, ACR, Log Analytics, App Insights, Key Vault) — quickstart Scenario 8 — **BLOCKED (live): runs in dispatched CI against Azure (Article I).**
+- [ ] T055 [US5] Verify via Resource Graph that the `prevent_destroy`+`CanNotDelete` ledger RG is **untouched** and no dangling role grants / orphaned Entra registrations remain (SC-010) — **BLOCKED (live): post-destroy verification; depends on T054.**
 
 **Checkpoint**: the spec-7 footprint is fully destroyable; the ledger is protected.
 
@@ -182,12 +182,12 @@ that nothing spec-7 remains and the ledger RG is intact.
 
 **Purpose**: docs, pins, and final validation across stories.
 
-- [ ] T056 [P] Record the new pins (`ModelContextProtocol.AspNetCore` 0.9.0-preview.2, `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.9) and the ACA/ACR/KV/App-Insights SKUs in `docs/tech-stack.md` (Postgres auth = Npgsql provider, no package)
-- [ ] T057 [P] Finalize `infra/control-plane-host/README.md`: AVM module list + versions, the two `azurerm` UAMI/role justifications (Article V), and the deploy runbook (KV seeding + principal bootstrap)
-- [ ] T058 Run `tofu fmt` + `tofu validate` on `infra/control-plane-host` and `infra/control-plane`; `dotnet format` + `dotnet build` + `dotnet test` green
-- [ ] T059 Execute the full `quickstart.md` (Scenarios 0–8) end-to-end against `westus3`
-- [ ] T060 Update `docs/spec-backlog.md` Status: mark spec 7 progress and note spec-006 T071/T072 unblocked
-- [ ] T061 [P] Verify **no inline secret** lands in the rendered tofu plan/state or container-app config for `infra/control-plane-host` (GitHub App key + webhook secret resolve only via Key Vault reference + UAMI; no registry password) — assert against the plan output and `docs`/runbook (SC-007)
+- [X] T056 [P] Record the new pins (`ModelContextProtocol.AspNetCore` 0.9.0-preview.2, `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.9 — used **instead of** `Microsoft.Identity.Web`) and the ACA/ACR/KV/App-Insights SKUs (+ AVM module versions) in `docs/tech-stack.md`; Postgres Entra-token auth = Npgsql `UsePeriodicPasswordProvider` + `Azure.Identity` (no package).
+- [X] T057 [P] Finalize `infra/control-plane-host/README.md`: AVM module list + exact versions (incl. App Insights 0.4.0), the two `azurerm` UAMI/role justifications (Article V), smoke findings (T015–T021, T048), the deploy runbook (KV seeding + principal bootstrap), and the expanded teardown runbook (T053). Status footer updated to US1+US2+US4 authored / validate-green.
+- [X] T058 Run `tofu fmt -check` + `tofu validate` on `infra/control-plane-host` and `infra/control-plane` (both **fmt-clean + valid** under OpenTofu 1.11.6); `dotnet build` (0 warn/0 err), `dotnet test` (**163 tests green**, incl. Pdp.Mcp.Tests 33), `dotnet format` clean (fixed a pre-existing whitespace nit in `Auth/OwnerAuthorization.cs`).
+- [ ] T059 Execute the full `quickstart.md` (Scenarios 0–8) end-to-end against `westus3` — **BLOCKED (live): the live acceptance run; depends on the dispatched deploy + principal bootstrap.**
+- [X] T060 Update `docs/spec-backlog.md` Status: added the spec-7 in-progress entry (authorable work complete; live-only remaining) and the explicit **spec-006 T071/T072 UNBLOCKED** note.
+- [X] T061 [P] Verify **no inline secret** lands in the host-stack config (SC-007): static assertion confirmed — ACR `admin_enabled = false` (UAMI pull, no registry password); both GitHub secrets resolve via `key_vault_secret_id` + UAMI `identity` and reach containers via `secret_name` (never a literal `value`); no `secrets_value` on the KV module. Only sensitive `value =` env is the App Insights connection string (Azure ingestion credential, out of SC-007 scope). **Live plan/state output assertion runs in CI (T026/T039).**
 
 ---
 

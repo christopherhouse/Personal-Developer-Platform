@@ -30,6 +30,7 @@ locals {
   acr_name            = "crpdp${local.region}controlplane" # alnum 5-50, no hyphens
   key_vault_name      = "kv-pdp-${local.region}-cph"       # <=24 chars, starts letter, no `--`
   law_name            = "log-pdp-${local.region}-controlplane"
+  appinsights_name    = "appi-pdp-${local.region}-controlplane"
   aca_env_name        = "cae-pdp-${local.region}-controlplane"
   app_name_ingress    = "ca-pdp-${local.region}-ingress"
   app_name_api        = "ca-pdp-${local.region}-api"
@@ -240,6 +241,30 @@ module "log_analytics" {
 }
 
 # ---------------------------------------------------------------------------
+# T048 (US4) — Application Insights (workspace-based) — the env_id-correlated telemetry sink.
+# The spec-006 verb layer ALREADY emits OpenTelemetry traces/metrics stamped with env_id
+# (ControlPlaneTelemetry, spec-006 T022); this stack just provisions the sink and the api/mcp apps export
+# to it via UseAzureMonitor() when APPLICATIONINSIGHTS_CONNECTION_STRING is set (T049). Workspace-based:
+# telemetry lands in the T017 Log Analytics workspace (workspace_id), which already carries the daily cap,
+# so there is no second cost surface (Article IX). application_type "web" = standard ASP.NET Core app.
+# ---------------------------------------------------------------------------
+
+module "application_insights" {
+  source  = "Azure/avm-res-insights-component/azurerm"
+  version = "0.4.0"
+
+  name                = local.appinsights_name
+  resource_group_name = azurerm_resource_group.host.name
+  location            = azurerm_resource_group.host.location
+
+  application_type = "web"
+  workspace_id     = module.log_analytics.resource_id # workspace-based: data flows into the LAW (T017)
+
+  enable_telemetry = false
+  tags             = local.tags
+}
+
+# ---------------------------------------------------------------------------
 # T018 — ACA managed environment (workload-profiles, VNet-integrated, EXTERNAL).
 # EXTERNAL (vnet_configuration.internal = false) so the environment has a public IP — required so GitHub
 # can reach the webhook via the ingress app. Per-app ingress visibility is then independent: the ingress
@@ -362,6 +387,11 @@ module "container_app_api" {
         { name = "ControlPlane__PostgresConnectionString", value = local.postgres_connection_string_api },
         { name = "ControlPlane__PlatformSubscriptionId", value = var.platform_subscription_id },
         { name = "ManagedIdentity__ClientId", value = azurerm_user_assigned_identity.api.client_id },
+        # env_id-correlated telemetry → App Insights (T049). The verb layer's UseAzureMonitor() reads this
+        # key; empty/unset is a graceful no-op (spec edge case, T051). Azure-generated ingestion credential
+        # (not a non-Azure secret) so it rides as a plain env — SC-007 scopes state-secrecy to the GitHub
+        # App key + webhook secret + registry password, none of which this is.
+        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = module.application_insights.connection_string },
         { name = "GitHubApp__PrivateKeyPem", secret_name = local.secret_name_gh_app_key },
         { name = "GitHubApp__WebhookSecret", secret_name = local.secret_name_gh_webhook },
         ], [
@@ -515,6 +545,9 @@ module "container_app_mcp" {
         { name = "ControlPlane__PostgresConnectionString", value = local.postgres_connection_string_mcp },
         { name = "ControlPlane__PlatformSubscriptionId", value = var.platform_subscription_id },
         { name = "ManagedIdentity__ClientId", value = azurerm_user_assigned_identity.mcp.client_id },
+        # env_id-correlated telemetry → App Insights (T049 — no longer deferred). UseAzureMonitor() reads
+        # this key; empty/unset is a graceful no-op (T051). Azure ingestion credential, plain env (SC-007).
+        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = module.application_insights.connection_string },
         { name = "GitHubApp__PrivateKeyPem", secret_name = local.secret_name_gh_app_key },
         # The MCP endpoint's OAuth 2.1 protected-resource config (single-owner authz; data-model §3).
         { name = "AzureAd__TenantId", value = var.tenant_id },

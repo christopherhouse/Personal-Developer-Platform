@@ -19,10 +19,10 @@ Versions marked **pinned** are enforced in config/CI; others track latest.
 |---|---|---|
 | .NET | **10 (LTS)**, pinned via `global.json` | Language/runtime for the control plane, `pdp` CLI, and MCP server. No Python. |
 | ASP.NET Core minimal APIs | 10.x | Control-plane service: verb endpoints + GitHub webhook receiver. |
-| MCP C# SDK (`ModelContextProtocol`, `ModelContextProtocol.AspNetCore`) | latest | `pdp-mcp` server exposing platform verbs as tools over streamable HTTP. |
-| `Microsoft.Identity.Web` | latest | Entra ID bearer-token validation on the MCP server / control plane; paired with OAuth protected-resource metadata (RFC 9728) so MCP clients discover sign-in. |
+| MCP C# SDK (`ModelContextProtocol`, `ModelContextProtocol.AspNetCore`) | **0.9.0-preview.2** (pinned, spec 7) | `pdp-mcp` server exposing platform verbs as tools over **stateless** streamable HTTP. |
+| `Microsoft.AspNetCore.Authentication.JwtBearer` | **10.0.9** (pinned, spec 7) | Entra ID bearer-token validation **at the MCP server** (`AddJwtBearer`, `MapInboundClaims=false`), paired with the MCP SDK's `.AddMcp` OAuth protected-resource metadata (RFC 9728) so clients discover sign-in. Chosen over `Microsoft.Identity.Web` — the single-owner `oid` allow-list needs only stock JWT validation. |
 | Wolverine (`WolverineFx` + `WolverineFx.Postgresql`) | latest | Command bus + durable messaging on the control-plane Postgres: durable outbox for webhook processing, scheduled messages (TTL/lease reaper), retries with backoff, sagas for the environment lifecycle. |
-| EF Core + Npgsql | 10.x / latest | Data access to the control-plane Postgres; native `cidr` ↔ `IPNetwork` mapping for IPAM. |
+| EF Core + Npgsql | 10.x / latest | Data access to the control-plane Postgres; native `cidr` ↔ `IPNetwork` mapping for IPAM. When hosted on ACA, Entra-token auth is wired via Npgsql `NpgsqlDataSourceBuilder.UsePeriodicPasswordProvider` + `Azure.Identity` (scope `https://ossrdbms-aad.database.windows.net/.default`) — **no** `Microsoft.Azure.PostgreSQL.Auth` package (it does not exist; spec 7 research §5). |
 | `EFCore.NamingConventions` | latest | snake_case tables/columns on the Postgres side. |
 | System.CommandLine | latest | `pdp` CLI front-end over the same verbs. |
 | `Azure.Identity` | latest | Auth everywhere — `DefaultAzureCredential` locally, managed identity on ACA. |
@@ -65,7 +65,10 @@ and hand-mapping cover the needs), Moq (SponsorLink trust damage), Serilog
 
 | Service | Role |
 |---|---|
-| Azure Container Apps | Hosts the control plane / `pdp-mcp` server: vnet-integrated, internal Postgres access, scale-to-zero. No APIM in front. |
+| Azure Container Apps | Hosts the control plane / `pdp-mcp` server: vnet-integrated, internal Postgres access, scale-to-zero. No APIM in front. **Spec 7**: workload-profiles (Consumption) env, External; `api`/`ingress` always-on (min 1), `mcp` scale-to-zero (min 0). AVM `avm-res-app-managedenvironment` 0.4.0 + `avm-res-app-containerapp` 0.9.0. |
+| Azure Container Registry | **Basic** SKU; admin user disabled, credential-free pull via per-app UAMI (AcrPull). Holds the spec-7 `pdp-api`/`pdp-ingress`/`pdp-mcp` images. AVM `avm-res-containerregistry-registry` 0.5.1. |
+| Azure Key Vault | **Standard**, RBAC-authorization; holds the GitHub App private key + webhook HMAC secret (the only non-Azure secrets), read at runtime by the api/mcp UAMIs. AVM `avm-res-keyvault-vault` 0.10.2. |
+| Azure Monitor (Log Analytics + Application Insights) | Spec-7 telemetry sink: Log Analytics `PerGB2018` with a ~1 GB/day cap + workspace-based Application Insights receiving the `env_id`-correlated traces the verb layer emits. AVM `avm-res-operationalinsights-workspace` 0.5.1 + `avm-res-insights-component` 0.4.0. |
 | Azure Database for PostgreSQL Flexible Server | Solution-scoped control-plane DB: environment registry, provisioning runs, archetype catalog, and the IPAM ledger (native `cidr` types, GiST exclusion for non-overlap). Burstable SKU. |
 | Azure Storage (blob) | OpenTofu state backend, one state per deployable unit. |
 | Azure Resource Graph | Source of truth for inventory ("what's deployed?"). |

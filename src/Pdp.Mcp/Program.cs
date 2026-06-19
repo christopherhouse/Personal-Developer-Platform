@@ -87,7 +87,10 @@ builder.Services
     .AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
     .WithTools<SpokeTools>()
-    .WithTools<FabricTools>();
+    .WithTools<FabricTools>()
+    .WithTools<IpamTools>()
+    .WithTools<InventoryTools>()
+    .WithTools<RunTools>();
 
 // Entra OAuth 2.1 protected-resource auth: JWT validation + PRM publication + the single-owner oid policy.
 builder.Services.AddOwnerAuthorization(builder.Configuration);
