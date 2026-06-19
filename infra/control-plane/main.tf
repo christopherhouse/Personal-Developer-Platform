@@ -26,19 +26,20 @@ resource "azurerm_resource_group" "control_plane" {
 # from any tooling — portal, CLI, IaC. The complement to prevent_destroy, which only
 # stops `tofu destroy`.
 #
-# MUST be created LAST. A CanNotDelete lock on the RG blocks the subnet child-resource
-# operation (the serviceAssociationLink) that the Flexible Server performs when it injects
-# into its delegated subnet — if the lock exists first, server creation fails with
-# "blocking by customer lock". depends_on forces the lock after the server (and thus after
-# the VNet/subnet it depends on), so the injection completes before the guard goes on.
-resource "azurerm_management_lock" "control_plane" {
-  name       = "lock-pdp-${local.region}-controlplane"
-  scope      = azurerm_resource_group.control_plane.id
-  lock_level = "CanNotDelete"
-  notes      = "Article IV carve-out: holds the live IPAM ledger. Removal only via reviewed protection-removal PR (infra/control-plane/README.md)."
-
-  depends_on = [module.postgres]
-}
+# TEMPORARILY REMOVED (reviewed protection-removal PR): the CanNotDelete lock blocks the
+# delete+recreate that azurerm performs when the Postgres Entra admin's principal_name changes
+# (relabel gmail → chhouse@microsoft.com). This PR lifts the lock so that one relabel apply can
+# proceed; the follow-up PR re-adds the block verbatim. The lock's depends_on=[module.postgres]
+# means it is destroyed before the admin, so the relabel succeeds in a single apply.
+#
+# Original block (restored in the follow-up PR):
+#   resource "azurerm_management_lock" "control_plane" {
+#     name       = "lock-pdp-${local.region}-controlplane"
+#     scope      = azurerm_resource_group.control_plane.id
+#     lock_level = "CanNotDelete"
+#     notes      = "Article IV carve-out: holds the live IPAM ledger. Removal only via reviewed protection-removal PR (infra/control-plane/README.md)."
+#     depends_on = [module.postgres]
+#   }
 
 # ----------------------------------------------------------------------------
 # Control-plane VNet + delegated subnet (private access for the Flexible Server)
