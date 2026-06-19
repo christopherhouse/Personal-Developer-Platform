@@ -11,9 +11,9 @@ variable "owner_object_id" {
 }
 
 variable "owner_principal_name" {
-  description = "UPN/principal name of the platform owner in the Entra tenant — the principal_name on the Postgres Entra administrator. Must match the directory UPN for the owner_object_id (not necessarily the public email)."
+  description = "UPN/principal name of the platform owner in the Entra tenant — the principal_name on the Postgres Entra administrator. Must match the username used to connect (az account user.name) for the same owner_object_id; the object id is the real auth key, this is the login label."
   type        = string
-  default     = "chris.house.00@gmail.com"
+  default     = "chhouse@microsoft.com"
 }
 
 variable "platform_dns_resource_group_name" {
