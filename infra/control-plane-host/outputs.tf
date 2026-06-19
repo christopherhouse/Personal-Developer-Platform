@@ -1,0 +1,135 @@
+# Outputs land with their resources. US1 (T023): ACR login server, container-app FQDNs, the per-app UAMI
+# names/object-ids/client-ids, and — critically — the one-time `pgaadauth_create_principal_with_oid` psql
+# command(s) the owner runs to register the UAMIs as Postgres principals (research §6, SC-010 single
+# reviewed manual step). The uami-mcp principal command is added in US2 (T036).
+
+# --- Container registry -------------------------------------------------------
+
+output "acr_login_server" {
+  description = "ACR login server (e.g. crpdpwestus3controlplane.azurecr.io) — the image registry the controlplane-host-images.yml workflow pushes to and the apps pull from via UAMI."
+  value       = module.acr.resource.login_server
+}
+
+# --- App endpoints ------------------------------------------------------------
+
+output "ingress_fqdn_url" {
+  description = "Public https URL of the YARP ingress app — the ONE public surface. GitHub webhook target is <this>/webhooks/github; the MCP endpoint (US2) is <this>/mcp."
+  value       = module.container_app_ingress.fqdn_url
+}
+
+output "api_fqdn_url" {
+  description = "Internal https URL of the api app (webhook sink + reconciler). Reachable only inside the ACA environment (via the ingress app)."
+  value       = module.container_app_api.fqdn_url
+}
+
+output "mcp_fqdn_url" {
+  description = "Internal https URL of the mcp app (the conversational MCP surface; scale-to-zero). Reachable only inside the ACA environment — the public path is <ingress>/mcp (US2)."
+  value       = module.container_app_mcp.fqdn_url
+}
+
+# --- Per-app managed identities ----------------------------------------------
+
+output "uami_ingress" {
+  description = "uami-ingress: name + object (principal) id + client id. AcrPull only."
+  value = {
+    name         = azurerm_user_assigned_identity.ingress.name
+    principal_id = azurerm_user_assigned_identity.ingress.principal_id
+    client_id    = azurerm_user_assigned_identity.ingress.client_id
+  }
+}
+
+output "uami_api" {
+  description = "uami-api: name + object (principal) id + client id. Postgres principal + AcrPull + Reader + KV Secrets User."
+  value = {
+    name         = azurerm_user_assigned_identity.api.name
+    principal_id = azurerm_user_assigned_identity.api.principal_id
+    client_id    = azurerm_user_assigned_identity.api.client_id
+  }
+}
+
+output "uami_mcp" {
+  description = "uami-mcp: name + object (principal) id + client id. Postgres principal + AcrPull + Reader + KV Secrets User (GitHub App key)."
+  value = {
+    name         = azurerm_user_assigned_identity.mcp.name
+    principal_id = azurerm_user_assigned_identity.mcp.principal_id
+    client_id    = azurerm_user_assigned_identity.mcp.client_id
+  }
+}
+
+# --- Application Insights (US4) ----------------------------------------------
+
+output "application_insights" {
+  description = "Workspace-based Application Insights (T048): resource id + name + the connection string the api/mcp apps export env_id-correlated telemetry to (already wired onto the apps as APPLICATIONINSIGHTS_CONNECTION_STRING — T049)."
+  sensitive   = true # connection_string carries the ingestion credential
+  value = {
+    resource_id       = module.application_insights.resource_id
+    name              = module.application_insights.name
+    connection_string = module.application_insights.connection_string
+  }
+}
+
+# --- Key Vault ----------------------------------------------------------------
+
+output "key_vault_uri" {
+  description = "Key Vault URI. Seed the GitHub App private key + webhook secret here out-of-band before applying the apps (runbook step 2): az keyvault secret set --vault-name <name> --name github-app-private-key/--name github-webhook-secret --file/--value ..."
+  value       = module.key_vault.uri
+}
+
+# --- Coordinates for the transient-ACA-Job bootstrap helper (scripts/bootstrap-postgres-principals.sh) ---
+#
+# The helper creates a short-lived ACA Job in THIS stack's managed environment (so it runs IN-VNet and can
+# reach the private ledger), authenticated as the owner via a freshly-minted oss-rdbms token passed as a job
+# secret. These are the non-secret coordinates it needs; the owner UPN + token are supplied at runtime by az.
+output "bootstrap_context" {
+  description = "Non-secret coordinates for scripts/bootstrap-postgres-principals.sh: the RG + ACA environment (where the transient in-VNet psql Job runs) and the private ledger FQDN/database it connects to."
+  value = {
+    resource_group          = azurerm_resource_group.host.name
+    aca_environment_name    = local.aca_env_name
+    aca_environment_id      = module.managed_environment.resource_id
+    ledger_fqdn             = data.azurerm_postgresql_flexible_server.ledger.fqdn
+    postgres_database       = var.postgres_database_name
+    uami_api_principal_name = azurerm_user_assigned_identity.api.name
+    uami_mcp_principal_name = azurerm_user_assigned_identity.mcp.name
+  }
+}
+
+# --- The one-time Postgres principal bootstrap (SC-010 single reviewed manual step) ---
+#
+# After apply, the owner (the Postgres Entra ADMIN) connects to the ledger from inside the VNet and runs
+# this to register uami-api as a Postgres principal (matched to the UAMI by object id) and grant it
+# least-privilege on the ipam + registry schemas. Idempotent on re-run (research §6). The uami-mcp
+# equivalent is emitted by the US2 output (T036).
+output "pgaadauth_bootstrap_uami_api" {
+  description = "psql to run ONCE as the Entra admin (in-VNet) to register uami-api as a Postgres principal + grant it on ipam/registry. The single reviewed manual step (SC-010)."
+  value       = <<-EOT
+    -- Connect as the Entra admin (owner) to the ledger, then run on database '${var.postgres_database_name}':
+    --   psql "host=${data.azurerm_postgresql_flexible_server.ledger.fqdn} dbname=${var.postgres_database_name} user=<owner-upn> sslmode=require"
+    SELECT * FROM pgaadauth_create_principal_with_oid(
+      '${azurerm_user_assigned_identity.api.name}',
+      '${azurerm_user_assigned_identity.api.principal_id}',
+      'service', false, false);
+    GRANT USAGE ON SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
+    ALTER DEFAULT PRIVILEGES IN SCHEMA ipam, registry GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${azurerm_user_assigned_identity.api.name}";
+  EOT
+}
+
+# The uami-mcp equivalent (T036/T038). The mcp host runs the verb layer in-process like the CLI, so it needs
+# the same Postgres principal + ipam/registry grants as uami-api. Run ONCE as the Entra admin (in-VNet),
+# idempotent on re-run (research §6). This is the second half of the single reviewed manual step (SC-010).
+output "pgaadauth_bootstrap_uami_mcp" {
+  description = "psql to run ONCE as the Entra admin (in-VNet) to register uami-mcp as a Postgres principal + grant it on ipam/registry. The mcp half of the single reviewed manual step (SC-010)."
+  value       = <<-EOT
+    -- Connect as the Entra admin (owner) to the ledger, then run on database '${var.postgres_database_name}':
+    --   psql "host=${data.azurerm_postgresql_flexible_server.ledger.fqdn} dbname=${var.postgres_database_name} user=<owner-upn> sslmode=require"
+    SELECT * FROM pgaadauth_create_principal_with_oid(
+      '${azurerm_user_assigned_identity.mcp.name}',
+      '${azurerm_user_assigned_identity.mcp.principal_id}',
+      'service', false, false);
+    GRANT USAGE ON SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
+    GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
+    ALTER DEFAULT PRIVILEGES IN SCHEMA ipam, registry GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${azurerm_user_assigned_identity.mcp.name}";
+  EOT
+}

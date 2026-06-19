@@ -1,0 +1,20 @@
+# Docker build context = repo root; keep it small. The Dockerfiles COPY only global.json,
+# Directory.*.props, and src/, so everything else is excluded.
+**/bin/
+**/obj/
+**/.vs/
+.git/
+.github/
+.specify/
+docs/
+infra/
+specs/
+tests/
+**/*.user
+**/.terraform/
+**/*.tfstate*
+**/*.tfvars
+.env*
+*.log
+.DS_Store
+Thumbs.db

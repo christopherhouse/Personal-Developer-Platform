@@ -1,0 +1,85 @@
+name: controlplane-host-destroy
+
+# Article VIII: destroy is never automatic. Manual workflow_dispatch only, gated on a typed
+# confirmation matching the stack name. This stack (platform/control-plane-host) is destroyable by
+# design (FR-016, SC-010): it has NO prevent_destroy / management lock, and it consumes the VNet /
+# private Postgres / private DNS BY REFERENCE — so destroying it removes only the host footprint
+# (ACA env + api/ingress/mcp apps, the 3 UAMIs, ACR, Log Analytics, App Insights, Key Vault) and
+# NEVER touches the prevent_destroy + CanNotDelete ledger RG.
+#
+# AFTER this destroy completes, run the manual principal cleanup (the single reviewed manual step,
+# SC-010): drop the uami-api / uami-mcp pgaadauth principals + revoke their grants — see
+# infra/control-plane-host/README.md (Teardown).
+
+on:
+  workflow_dispatch:
+    inputs:
+      destroy-confirm:
+        description: 'Type the stack name to confirm destroy: control-plane-host'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tofu-control-plane-host # serialize with this stack's apply — no destroy during an apply
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/control-plane-host
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - name: Verify typed confirmation
+        if: inputs.destroy-confirm != 'control-plane-host'
+        run: |
+          echo "::error::destroy-confirm must equal 'control-plane-host' (got '${{ inputs.destroy-confirm }}'). Aborting."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      # Shown for the record. This stack carries no prevent_destroy, so the plan should be a clean
+      # full teardown of the host footprint (the ledger RG is in a DIFFERENT stack/state).
+      - name: tofu plan -destroy
+        run: tofu plan -destroy -input=false -no-color | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu destroy
+        run: tofu destroy -input=false -no-color -auto-approve
+
+      - name: Manual cleanup reminder (SC-010)
+        if: always()
+        run: |
+          {
+            echo "## Post-destroy manual cleanup (SC-010)";
+            echo "The Postgres pgaadauth principals are NOT part of this stack's state.";
+            echo "As the Entra admin (in-VNet), drop them + revoke grants:";
+            echo '```sql';
+            echo 'REASSIGN OWNED BY "uami-pdp-westus3-api"  TO "<owner-upn>"; DROP OWNED BY "uami-pdp-westus3-api";  DROP ROLE "uami-pdp-westus3-api";';
+            echo 'REASSIGN OWNED BY "uami-pdp-westus3-mcp"  TO "<owner-upn>"; DROP OWNED BY "uami-pdp-westus3-mcp";  DROP ROLE "uami-pdp-westus3-mcp";';
+            echo '```';
+            echo "See infra/control-plane-host/README.md (Teardown).";
+          } >> "$GITHUB_STEP_SUMMARY"

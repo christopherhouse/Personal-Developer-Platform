@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+
+  <!-- pdp-mcp (spec 007): the chatops MCP server. A THIN ADAPTER that hosts the spec-006 verb layer
+       IN-PROCESS — exactly as the `pdp` CLI does (ProjectReference to Pdp.ControlPlane.Verbs) — and
+       exposes the verbs as MCP tools over streamable HTTP, gated as an Entra OAuth 2.1 protected
+       resource. No reimplementation, no new verb. The real bootstrap (AddMcpServer().WithHttpTransport()
+       + JwtBearer/PRM auth + tool registration) lands in Phase 2/US2 (T011/T013/T032-T034); Phase 1
+       scaffolds the project only. -->
+  <PropertyGroup>
+    <AssemblyName>pdp-mcp</AssemblyName>
+    <RootNamespace>Pdp.Mcp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MCP server SDK (streamable HTTP) — the tool surface over the verb layer (T011/T032+). -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <!-- Entra OAuth 2.1 protected-resource auth at the MCP server (T013). -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <!-- Per-app UAMI credential for Entra-token auth to the private Postgres (T011/T012). The token is
+         supplied to Npgsql via UsePeriodicPasswordProvider in the verb-layer DI (research §5) — no
+         dedicated Postgres-auth package exists. -->
+    <PackageReference Include="Azure.Identity" />
+    <!-- env_id-correlated telemetry → Application Insights (UseAzureMonitor; T011/T049). -->
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The single verb implementation — reused by reference, NOT reimplemented (FR-010, SC-003). -->
+    <ProjectReference Include="..\Pdp.ControlPlane.Verbs\Pdp.ControlPlane.Verbs.csproj" />
+  </ItemGroup>
+
+</Project>

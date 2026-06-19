@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TargetFramework / Nullable / ImplicitUsings / analyzers come from Directory.Build.props.
+       Package versions come from Directory.Packages.props (central package management). -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- Pdp.Mcp tests (spec 007): WebApplicationFactory for the MCP endpoint (401 + PRM challenge, owner
+       oid 200, non-owner reject), NSubstitute for the verb interfaces (tool->verb 1:1 adapter tests),
+       and confirmation-token tests (plan->confirm, verbatim target, single-use/expiry). The verb layer
+       itself is already covered by the spec-006 suites and is not re-tested here. Tests land in Phase 2
+       (T028-T030) and Phase 3 (T042); Phase 1 scaffolds the project. -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pdp.Mcp\Pdp.Mcp.csproj" />
+    <ProjectReference Include="..\Pdp.ControlPlane.TestSupport\Pdp.ControlPlane.TestSupport.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>
