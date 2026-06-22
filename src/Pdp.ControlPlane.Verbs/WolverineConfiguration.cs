@@ -71,19 +71,23 @@ public static class WolverineConfiguration
         // RegistryDbContext that maps EnvironmentSaga (research §2).
         options.UseEntityFrameworkCoreTransactions();
 
-        // The reconciler's scheduled messages and the dispatch/track flow survive restarts.
+        // The reconciler's scheduled messages and the dispatch/track flow survive restarts. BOTH nodes need
+        // these durable local queues: the verb's dispatch cascade (Begin*Provisioning ->
+        // DispatchWorkflowCommand -> GitHub dispatch) is enrolled in the durable transactional outbox and
+        // routed to `local://durable/`, so the node MUST be able to build that durable sender.
         options.Policies.UseDurableLocalQueues();
 
-        // The Api is single-node by design (one owner, one host — Article-level "no SaaS"; spec 007
-        // deploys ONE always-on Api container). Solo mode skips the leadership election / node-assignment
-        // dance, so the inbox/outbox start immediately and recover faster after an ungraceful shutdown.
-        // It also removes the multi-host node-coordination contention that flares when the test suite
-        // starts and stops many hosts back-to-back against one shared Postgres (the CI flake). The MCP
-        // node (runScheduledAgents=false) instead runs Serverless: it keeps the durable transactional
-        // outbox (a dispatch enqueued there is still durable and sent immediately) but turns OFF the
-        // background durability/scheduled agents, so the reconciler's recurring sweep runs ONLY on the
-        // Api node — never double-processed across the two nodes that share this Postgres (research §13).
-        options.Durability.Mode = runScheduledAgents ? DurabilityMode.Solo : DurabilityMode.Serverless;
+        // Solo durability on BOTH nodes. Solo skips the leadership-election / node-assignment dance, so the
+        // inbox/outbox start immediately and recover faster after an ungraceful shutdown, and it removes the
+        // multi-host coordination contention that flares when the test suite cycles many hosts against one
+        // shared Postgres (the CI flake). The scale-to-zero MCP node CANNOT be Serverless: Serverless mode
+        // DISABLES the transactional inbox/outbox, but the verb's dispatch cascade is enrolled in the durable
+        // outbox and routed to `local://durable/` — Serverless can't build that sender, throwing
+        // UnknownTransportException on the first dispatch (the live failure). The two nodes are kept off each
+        // other's toes by REGISTRATION, not durability mode: only the Api registers ReconcilerScheduler (it
+        // owns the recurring sweep), and the MCP node is scale-to-zero, so the windows where both run
+        // recovery overlap are brief and the sweep is idempotent (research §13).
+        options.Durability.Mode = DurabilityMode.Solo;
 
         // Message-store provisioning (the `wolverine` schema + envelope tables/functions). Wolverine
         // auto-builds missing storage on startup BY DEFAULT — fine for the always-on tracking node (the

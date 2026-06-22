@@ -23,6 +23,7 @@ public static class ControlPlaneTestHost
     public static async Task<IHost> StartAsync(
         string connectionString,
         Action<IServiceCollection>? configureOverrides = null,
+        bool runScheduledAgents = true,
         CancellationToken cancellationToken = default)
     {
         var builder = Host.CreateApplicationBuilder();
@@ -38,7 +39,7 @@ public static class ControlPlaneTestHost
         });
 
         builder.Services.AddControlPlaneVerbs(builder.Configuration);
-        builder.UseWolverine(opts => opts.ConfigureControlPlaneMessaging(connectionString));
+        builder.UseWolverine(opts => opts.ConfigureControlPlaneMessaging(connectionString, runScheduledAgents));
 
         configureOverrides?.Invoke(builder.Services);
 
