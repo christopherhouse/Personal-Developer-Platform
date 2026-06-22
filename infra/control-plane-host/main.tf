@@ -560,6 +560,12 @@ module "container_app_mcp" {
         { name = "AzureAd__TenantId", value = data.azurerm_client_config.current.tenant_id },
         { name = "AzureAd__Audience", value = local.mcp_audience },
         { name = "AzureAd__OwnerOid", value = var.owner_object_id },
+        # Behind the ingress, the MCP SDK would build its OAuth protected-resource-metadata URL (the
+        # WWW-Authenticate `resource_metadata` challenge + the metadata doc) from this app's INTERNAL host.
+        # Give it the PUBLIC absolute URL so external OAuth clients can discover it. Built from the ACA env
+        # default domain + the ingress app NAME (a local string) — NOT module.container_app_ingress, which
+        # would create a cycle (the ingress already references this mcp app's FQDN for its YARP destination).
+        { name = "Mcp__ResourceMetadataUri", value = "https://${local.app_name_ingress}.${module.managed_environment.default_domain}/.well-known/oauth-protected-resource/mcp" },
         ], [
         for k, v in local.github_app_env : { name = k, value = v }
       ])

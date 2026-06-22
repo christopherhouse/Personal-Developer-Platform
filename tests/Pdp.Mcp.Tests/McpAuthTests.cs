@@ -53,6 +53,21 @@ public sealed class McpAuthTests(ControlPlanePostgresFixture fixture)
     }
 
     [Fact]
+    public async Task The_PRM_challenge_advertises_the_configured_public_metadata_uri()
+    {
+        // Behind the ingress the request host is internal; the host stack supplies the PUBLIC absolute URL so
+        // the challenge advertises a reachable endpoint. When set, it is returned verbatim (not request-derived).
+        const string publicUri = "https://ingress.example.com/.well-known/oauth-protected-resource/mcp";
+        using var factory = new McpAuthFactory(fixture.ConnectionString, OwnerOid, publicUri);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(InitializeRequest(oid: null));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        response.Headers.WwwAuthenticate.ToString().ShouldContain(publicUri);
+    }
+
+    [Fact]
     public async Task A_non_owner_oid_is_rejected_and_no_tool_runs()
     {
         using var factory = NewFactory();
@@ -104,7 +119,7 @@ public sealed class McpAuthTests(ControlPlanePostgresFixture fixture)
     /// </summary>
     private sealed class McpAuthFactory : WebApplicationFactory<Program>
     {
-        public McpAuthFactory(string connectionString, string ownerOid)
+        public McpAuthFactory(string connectionString, string ownerOid, string? resourceMetadataUri = null)
         {
             Environment.SetEnvironmentVariable("ControlPlane__PostgresConnectionString", connectionString);
             Environment.SetEnvironmentVariable("GitHubApp__AppId", "1");
@@ -116,6 +131,10 @@ public sealed class McpAuthTests(ControlPlanePostgresFixture fixture)
             Environment.SetEnvironmentVariable("AzureAd__TenantId", "00000000-0000-0000-0000-000000000000");
             Environment.SetEnvironmentVariable("AzureAd__Audience", "api://pdp-mcp");
             Environment.SetEnvironmentVariable("AzureAd__OwnerOid", ownerOid);
+            // The host stack supplies an absolute public PRM URL in prod (the ingress FQDN). Passing null
+            // CLEARS the process env var so the other tests fall back to the request-derived default rather
+            // than inheriting a value a prior factory set.
+            Environment.SetEnvironmentVariable("Mcp__ResourceMetadataUri", resourceMetadataUri);
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder) =>
