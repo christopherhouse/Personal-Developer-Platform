@@ -15,8 +15,12 @@ namespace Pdp.ControlPlane.Ipam.Migrations
             migrationBuilder.EnsureSchema(
                 name: "ipam");
 
-            migrationBuilder.AlterDatabase()
-                .Annotation("Npgsql:PostgresExtension:public.btree_gist", ",,");
+            // btree_gist backs the GiST EXCLUDE non-overlap constraints below (`pool_id WITH =`). Created
+            // in `public` (the default search_path schema) so the gist opclasses resolve from the
+            // schema-qualified `ipam.*` constraint DDL without qualification. Created via raw SQL rather
+            // than HasPostgresExtension("public", …) — the latter causes a perpetual model-diff warning.
+            // Requires the azure.extensions allow-list (BTREE_GIST), set on the server by infra/control-plane.
+            migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS btree_gist SCHEMA public;");
 
             migrationBuilder.CreateTable(
                 name: "region_pool",
@@ -82,10 +86,9 @@ namespace Pdp.ControlPlane.Ipam.Migrations
                 unique: true);
 
             // The load-bearing guarantee (FR-006): no two allocations in the same pool may have
-            // overlapping networks. EXCLUDE constraints cannot be modelled in EF — raw SQL,
-            // requires btree_gist (for `pool_id WITH =`) and inet_ops (for cidr `&&`). Research §8.
-            // Tables are schema-qualified (`ipam`); the gist opclasses resolve via `public` in the
-            // search_path (the extension is pinned there).
+            // overlapping networks. EXCLUDE constraints cannot be modelled in EF — raw SQL, requires
+            // btree_gist (for `pool_id WITH =`) and inet_ops (for cidr `&&`). Research §8. Tables are
+            // schema-qualified (`ipam`); the gist opclasses resolve via `public` in the search_path.
             migrationBuilder.Sql(
                 "ALTER TABLE ipam.allocation " +
                 "ADD CONSTRAINT allocations_no_overlap " +

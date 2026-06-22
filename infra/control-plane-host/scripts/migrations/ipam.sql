@@ -8,7 +8,7 @@ START TRANSACTION;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
         IF NOT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname = 'ipam') THEN
             CREATE SCHEMA ipam;
         END IF;
@@ -17,14 +17,14 @@ END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     CREATE EXTENSION IF NOT EXISTS btree_gist SCHEMA public;
     END IF;
 END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     CREATE TABLE ipam.region_pool (
         id uuid NOT NULL,
         region text NOT NULL,
@@ -39,7 +39,7 @@ END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     CREATE TABLE ipam.allocation (
         id uuid NOT NULL,
         pool_id uuid NOT NULL,
@@ -56,42 +56,42 @@ END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     CREATE UNIQUE INDEX uq_allocation_pool_name ON ipam.allocation (pool_id, name);
     END IF;
 END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     CREATE UNIQUE INDEX ix_region_pool_region ON ipam.region_pool (region);
     END IF;
 END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     CREATE UNIQUE INDEX ix_region_pool_region_index ON ipam.region_pool (region_index);
     END IF;
 END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     ALTER TABLE ipam.allocation ADD CONSTRAINT allocations_no_overlap EXCLUDE USING gist (pool_id WITH =, network inet_ops WITH &&);
     END IF;
 END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     ALTER TABLE ipam.region_pool ADD CONSTRAINT region_pool_supernet_no_overlap EXCLUDE USING gist (supernet inet_ops WITH &&);
     END IF;
 END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     INSERT INTO ipam.region_pool (id, region, region_index, supernet, hub_carveout, created_at)
     VALUES ('11111111-1111-1111-1111-111111111111', 'platform', 0, '10.0.0.0/16', NULL, '2026-01-01T00:00:00+00:00')
     ON CONFLICT (id) DO NOTHING;
@@ -105,9 +105,9 @@ END $EF$;
 
 DO $EF$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622143551_InitialIpamSchema') THEN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "migration_id" = '20260622150020_InitialIpamSchema') THEN
     INSERT INTO "__EFMigrationsHistory" (migration_id, product_version)
-    VALUES ('20260622143551_InitialIpamSchema', '10.0.9');
+    VALUES ('20260622150020_InitialIpamSchema', '10.0.9');
     END IF;
 END $EF$;
 COMMIT;

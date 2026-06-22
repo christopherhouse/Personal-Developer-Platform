@@ -13,7 +13,7 @@ using Pdp.ControlPlane.Ipam;
 namespace Pdp.ControlPlane.Ipam.Migrations
 {
     [DbContext(typeof(IpamDbContext))]
-    [Migration("20260622143551_InitialIpamSchema")]
+    [Migration("20260622150020_InitialIpamSchema")]
     partial class InitialIpamSchema
     {
         /// <inheritdoc />
@@ -25,7 +25,6 @@ namespace Pdp.ControlPlane.Ipam.Migrations
                 .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Pdp.ControlPlane.Ipam.Entities.Allocation", b =>

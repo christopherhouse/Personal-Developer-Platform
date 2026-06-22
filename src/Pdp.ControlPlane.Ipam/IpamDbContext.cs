@@ -37,11 +37,12 @@ public class IpamDbContext(DbContextOptions<IpamDbContext> options) : DbContext(
         // the bootstrap GRANT both say `ipam`).
         modelBuilder.HasDefaultSchema(Schema);
 
-        // Brings B-tree equality (pool_id WITH =) into the GiST index alongside the cidr overlap
-        // operator — the provider emits CREATE EXTENSION in the migration (research §8). Pinned to
-        // `public` (not the `ipam` default schema) so its gist operator classes sit in the default
-        // search_path, where the EXCLUDE-constraint DDL below resolves them without qualification.
-        modelBuilder.HasPostgresExtension("public", "btree_gist");
+        // btree_gist (brings B-tree equality `pool_id WITH =` into the GiST exclusion index alongside the
+        // cidr overlap operator, research §8) is created directly in the migration as
+        // `CREATE EXTENSION ... SCHEMA public`, NOT via HasPostgresExtension. Modelling it with an explicit
+        // "public" schema yields a perpetual PendingModelChangesWarning — Npgsql drops the default-schema
+        // qualifier from the snapshot but keeps it in the model diff. Raw SQL sidesteps that and keeps the
+        // gist operator classes in `public`, in the default search_path where the EXCLUDE DDL resolves them.
 
         modelBuilder.Entity<RegionPool>(entity =>
         {
