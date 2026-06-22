@@ -97,13 +97,15 @@ output "bootstrap_context" {
 #
 # After apply, the owner (the Postgres Entra ADMIN) connects to the ledger from inside the VNet and runs
 # this to register uami-api as a Postgres principal (matched to the UAMI by object id) and grant it
-# least-privilege on the ipam + registry schemas. Idempotent on re-run (research §6). The uami-mcp
-# equivalent is emitted by the US2 output (T036).
+# least-privilege on the ipam + registry schemas. PREREQUISITE: scripts/run-migrations has applied the
+# ipam + registry schemas (the GRANTs target those tables, so they must exist first). Idempotent on
+# re-run (research §6). The uami-mcp equivalent is emitted by the US2 output below.
 output "pgaadauth_bootstrap_uami_api" {
-  description = "psql to run ONCE as the Entra admin (in-VNet) to register uami-api as a Postgres principal + grant it on ipam/registry. The single reviewed manual step (SC-010)."
+  description = "psql to run ONCE as the Entra admin (in-VNet, AFTER run-migrations) to register uami-api + grant it on ipam/registry and own the wolverine schema. The single reviewed manual step (SC-010)."
   value       = <<-EOT
     -- Connect as the Entra admin (owner) to the ledger, then run on database '${var.postgres_database_name}':
     --   psql "host=${data.azurerm_postgresql_flexible_server.ledger.fqdn} dbname=${var.postgres_database_name} user=<owner-upn> sslmode=require"
+    -- PREREQUISITE: run-migrations has created the ipam + registry schemas/tables (owned by this admin).
     SELECT * FROM pgaadauth_create_principal_with_oid(
       '${azurerm_user_assigned_identity.api.name}',
       '${azurerm_user_assigned_identity.api.principal_id}',
@@ -112,17 +114,24 @@ output "pgaadauth_bootstrap_uami_api" {
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
     ALTER DEFAULT PRIVILEGES IN SCHEMA ipam, registry GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${azurerm_user_assigned_identity.api.name}";
+    -- Wolverine message store: the api is the always-on tracking node and OWNS the wolverine schema, so
+    -- its default startup auto-build creates the envelope tables/functions there. AUTHORIZATION scopes the
+    -- api's DDL to this schema only (least-privilege: no database-level CREATE). mcp reaches these via
+    -- membership (below); we deliberately do NOT use UseResourceSetupOnStartup (it purges envelope state).
+    CREATE SCHEMA IF NOT EXISTS wolverine AUTHORIZATION "${azurerm_user_assigned_identity.api.name}";
   EOT
 }
 
-# The uami-mcp equivalent (T036/T038). The mcp host runs the verb layer in-process like the CLI, so it needs
-# the same Postgres principal + ipam/registry grants as uami-api. Run ONCE as the Entra admin (in-VNet),
-# idempotent on re-run (research §6). This is the second half of the single reviewed manual step (SC-010).
+# The uami-mcp equivalent. The mcp host runs the same verb layer in-process as the api, so it writes the
+# same three schemas (ipam + registry DML AND the wolverine durable outbox). Run ONCE as the Entra admin
+# (in-VNet), AFTER the uami-api bootstrap (the wolverine membership references uami-api, which must exist).
+# Idempotent on re-run (research §6). The mcp half of the single reviewed manual step (SC-010).
 output "pgaadauth_bootstrap_uami_mcp" {
-  description = "psql to run ONCE as the Entra admin (in-VNet) to register uami-mcp as a Postgres principal + grant it on ipam/registry. The mcp half of the single reviewed manual step (SC-010)."
+  description = "psql to run ONCE as the Entra admin (in-VNet, AFTER the uami-api bootstrap) to register uami-mcp + grant it on ipam/registry and (via membership) the api-owned wolverine store. The mcp half of SC-010."
   value       = <<-EOT
     -- Connect as the Entra admin (owner) to the ledger, then run on database '${var.postgres_database_name}':
     --   psql "host=${data.azurerm_postgresql_flexible_server.ledger.fqdn} dbname=${var.postgres_database_name} user=<owner-upn> sslmode=require"
+    -- PREREQUISITE: the uami-api bootstrap has run (the GRANT below references uami-api).
     SELECT * FROM pgaadauth_create_principal_with_oid(
       '${azurerm_user_assigned_identity.mcp.name}',
       '${azurerm_user_assigned_identity.mcp.principal_id}',
@@ -131,5 +140,11 @@ output "pgaadauth_bootstrap_uami_mcp" {
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
     ALTER DEFAULT PRIVILEGES IN SCHEMA ipam, registry GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${azurerm_user_assigned_identity.mcp.name}";
+    -- Wolverine message store: the api OWNS + auto-builds the wolverine envelope tables; the scale-to-zero
+    -- mcp node (AutoBuildMessageStorageOnStartup=None) never creates them, it only reads/writes them. It
+    -- reaches the api-owned tables via role membership — mcp INHERITs every privilege uami-api holds,
+    -- including DML on tables api creates LATER (membership is role-level, so no table need exist now).
+    -- Requires INHERIT (the Postgres default for pgaadauth principals); the admin can grant the role it made.
+    GRANT "${azurerm_user_assigned_identity.api.name}" TO "${azurerm_user_assigned_identity.mcp.name}";
   EOT
 }

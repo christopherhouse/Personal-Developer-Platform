@@ -85,6 +85,19 @@ public static class WolverineConfiguration
         // Api node — never double-processed across the two nodes that share this Postgres (research §13).
         options.Durability.Mode = runScheduledAgents ? DurabilityMode.Solo : DurabilityMode.Serverless;
 
+        // Message-store provisioning (the `wolverine` schema + envelope tables/functions). Wolverine
+        // auto-builds missing storage on startup BY DEFAULT — fine for the always-on tracking node (the
+        // Api / CLI / tests run as a principal that owns the `wolverine` schema, so the build is allowed).
+        // The scale-to-zero MCP node (runScheduledAgents=false) runs as uami-mcp, which does NOT own the
+        // schema and must never attempt DDL — and two nodes racing to build one shared store is undefined.
+        // So the serverless node disables the auto-build: the Api owns + provisions the store; this node
+        // only reads/writes the already-provisioned tables (its grants come via role membership — see the
+        // host stack bootstrap SQL). NOT UseResourceSetupOnStartup() anywhere: that PURGES envelope state.
+        if (!runScheduledAgents)
+        {
+            options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
+        }
+
         // Wolverine 6 unbundled the Roslyn code generator; compile handler glue at startup (GH-2876).
         options.UseRuntimeCompilation();
 

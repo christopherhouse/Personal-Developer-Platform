@@ -36,7 +36,12 @@ param(
   [string] $PgBootImage = 'postgres:16-alpine'
 )
 
-$ErrorActionPreference = 'Stop'
+# NOTE: NOT 'Stop'. Every `az containerapp` call emits a stderr WARNING ("behavior altered by extension:
+# containerapp"). Under ErrorActionPreference='Stop', PowerShell turns that stderr line into a terminating
+# NativeCommandError BEFORE `2>$null` can discard it - so Stop is unusable with az. This script checks
+# $LASTEXITCODE explicitly (Assert-LastExit) on every call that matters, so 'Continue' is correct: real
+# failures are still caught by exit code; the cosmetic warning is just allowed through.
+$ErrorActionPreference = 'Continue'
 
 function Write-Step($m) { Write-Host ">> $m" -ForegroundColor Cyan }
 function Write-Ok($m) { Write-Host "[OK] $m" -ForegroundColor Green }
@@ -47,6 +52,10 @@ function Assert-LastExit($m) { if ($LASTEXITCODE -ne 0) { Die $m } }
 foreach ($t in @('az', 'tofu')) {
   if (-not (Get-Command $t -ErrorAction SilentlyContinue)) { Die "$t not found on PATH" }
 }
+
+# Always operate on THIS stack (infra/control-plane-host), regardless of the caller's cwd, so
+# tofu output/init read the right state. $PSScriptRoot is .../scripts; the stack is its parent.
+Set-Location -Path (Join-Path $PSScriptRoot '..')
 
 Write-Step 'Reading stack coordinates from tofu output...'
 $ctxJson = tofu output -json bootstrap_context 2>$null

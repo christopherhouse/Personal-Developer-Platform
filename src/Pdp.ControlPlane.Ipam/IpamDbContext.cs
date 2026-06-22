@@ -12,6 +12,10 @@ namespace Pdp.ControlPlane.Ipam;
 /// </summary>
 public class IpamDbContext(DbContextOptions<IpamDbContext> options) : DbContext(options)
 {
+    /// <summary>The PostgreSQL schema this context owns (beside <c>registry</c> and Wolverine's
+    /// <c>wolverine</c>), so least-privilege grants and teardown are per-schema (SC-010).</summary>
+    public const string Schema = "ipam";
+
     /// <summary>Registered region pools (and the platform-shared supernet, index 0).</summary>
     public DbSet<RegionPool> RegionPools => Set<RegionPool>();
 
@@ -27,9 +31,18 @@ public class IpamDbContext(DbContextOptions<IpamDbContext> options) : DbContext(
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Brings B-tree equality (pool_id WITH =) into the GiST index alongside the cidr
-        // overlap operator — the provider emits CREATE EXTENSION in the migration (research §8).
-        modelBuilder.HasPostgresExtension("btree_gist");
+        // This context's tables live in the `ipam` schema (mirrors RegistryDbContext), so the live
+        // least-privilege UAMI grants and teardown are scoped per-schema (SC-010). Locally/tests this
+        // was implicitly `public`; pinning it makes code match the grants/docs (the host-stack var and
+        // the bootstrap GRANT both say `ipam`).
+        modelBuilder.HasDefaultSchema(Schema);
+
+        // btree_gist (brings B-tree equality `pool_id WITH =` into the GiST exclusion index alongside the
+        // cidr overlap operator, research §8) is created directly in the migration as
+        // `CREATE EXTENSION ... SCHEMA public`, NOT via HasPostgresExtension. Modelling it with an explicit
+        // "public" schema yields a perpetual PendingModelChangesWarning — Npgsql drops the default-schema
+        // qualifier from the snapshot but keeps it in the model diff. Raw SQL sidesteps that and keeps the
+        // gist operator classes in `public`, in the default search_path where the EXCLUDE DDL resolves them.
 
         modelBuilder.Entity<RegionPool>(entity =>
         {

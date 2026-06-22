@@ -37,11 +37,11 @@ public static class IpamSeedData
     /// run against a fresh or an already-seeded database.
     /// </summary>
     public static string Sql { get; } = $"""
-        INSERT INTO region_pool (id, region, region_index, supernet, hub_carveout, created_at)
+        INSERT INTO {IpamDbContext.Schema}.region_pool (id, region, region_index, supernet, hub_carveout, created_at)
         VALUES ('{PlatformPoolId}', 'platform', 0, '{PlatformSupernet}', NULL, '{SeededAt}')
         ON CONFLICT (id) DO NOTHING;
 
-        INSERT INTO allocation (id, pool_id, name, network, prefix_length, kind, allocated_at)
+        INSERT INTO {IpamDbContext.Schema}.allocation (id, pool_id, name, network, prefix_length, kind, allocated_at)
         VALUES ('{ControlPlaneVnetAllocationId}', '{PlatformPoolId}', '{ControlPlaneVnetName}',
                 '{ControlPlaneVnetCidr}', 24, 'reservation', '{SeededAt}')
         ON CONFLICT (id) DO NOTHING;

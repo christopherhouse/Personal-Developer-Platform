@@ -84,10 +84,26 @@ exactly and smoke-validated under OpenTofu 1.11.x (T009).
 2. Seed Key Vault secrets (GitHub App private key + webhook HMAC secret) via the secure pipeline path —
    **never** in tofu vars or state.
 3. Apply this stack (plan-on-PR / apply-on-merge); build + push images to ACR over OIDC.
-4. **One-time Postgres principal bootstrap** (the single reviewed manual step, SC-010): registers
-   `uami-api` / `uami-mcp` as Postgres Entra principals + grants them on `ipam`/`registry`, so their
-   token logins succeed (research §6). `pgaadauth_*` must run as the Entra **admin** against the private
-   ledger — which is VNet-only. Two ways to do it:
+4. **One-time schema migration** — apply the `ipam` + `registry` EF schemas to the `pdp` database
+   (created by the `infra/control-plane` Tofu `databases` block) so the principal grants have tables to
+   target. Like the bootstrap, this runs in-VNet as the Entra **admin** via a transient ACA Job:
+
+   ```powershell
+   az login                              # as the Postgres Entra ADMIN
+   cd infra/control-plane-host
+   ./scripts/run-migrations.ps1          # applies scripts/migrations/{ipam,registry}.sql, idempotent
+   ```
+
+   The SQL is `dotnet ef migrations script --idempotent` output committed under `scripts/migrations/`;
+   regenerate it whenever the EF migrations change. Tables are created **owned by the admin**; the apps
+   get DML via the principal grants (next step). The `wolverine` message-store schema is **not** migrated
+   here — the always-on `api` owns it and Wolverine auto-builds its tables on startup (the bootstrap
+   creates the schema `AUTHORIZATION uami-api`).
+5. **One-time Postgres principal bootstrap** (the single reviewed manual step, SC-010): registers
+   `uami-api` / `uami-mcp` as Postgres Entra principals + grants them on `ipam`/`registry` (and, for
+   `uami-mcp`, role membership in `uami-api` for the api-owned `wolverine` store), so their token logins
+   succeed (research §6). **Run AFTER step 4** (grants target the migrated tables). `pgaadauth_*` must run
+   as the Entra **admin** against the private ledger — which is VNet-only. Two ways to do it:
 
    - **Recommended — the transient-Job helper** (run from your laptop/Cloud Shell; the psql runs in-VNet
      inside a short-lived ACA Job, your oss-rdbms token rides in as a Job secret, the Job self-deletes).
