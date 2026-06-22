@@ -49,6 +49,14 @@ public sealed class ControlPlanePostgresFixture : IAsyncLifetime
             await registry.Database.MigrateAsync();
         }
 
+        // Provision Wolverine's message store once. Wolverine auto-builds the `wolverine` schema when a
+        // Solo host starts; tests that boot the MCP host (Solo durability + AutoBuildMessageStorageOnStartup
+        // = None, so it never builds the store itself) need it already present. Mirrors prod, where the
+        // always-on Api owns + builds the store and the scale-to-zero MCP node only reads/writes it.
+        var wolverineSeed = await ControlPlaneTestHost.StartAsync(ConnectionString);
+        await wolverineSeed.StopAsync();
+        wolverineSeed.Dispose();
+
         // Snapshot the table graph once; Respawn inspects schema, not data, so the presence of the
         // ipam seed rows is irrelevant.
         await using var conn = new NpgsqlConnection(ConnectionString);
