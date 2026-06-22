@@ -13,7 +13,7 @@ using Pdp.ControlPlane.Ipam;
 namespace Pdp.ControlPlane.Ipam.Migrations
 {
     [DbContext(typeof(IpamDbContext))]
-    [Migration("20260615211313_InitialIpamSchema")]
+    [Migration("20260622143551_InitialIpamSchema")]
     partial class InitialIpamSchema
     {
         /// <inheritdoc />
@@ -21,6 +21,7 @@ namespace Pdp.ControlPlane.Ipam.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasDefaultSchema("ipam")
                 .HasAnnotation("ProductVersion", "10.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -67,7 +68,7 @@ namespace Pdp.ControlPlane.Ipam.Migrations
                         .IsUnique()
                         .HasDatabaseName("uq_allocation_pool_name");
 
-                    b.ToTable("allocation", (string)null);
+                    b.ToTable("allocation", "ipam");
                 });
 
             modelBuilder.Entity("Pdp.ControlPlane.Ipam.Entities.RegionPool", b =>
@@ -109,7 +110,7 @@ namespace Pdp.ControlPlane.Ipam.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_region_pool_region_index");
 
-                    b.ToTable("region_pool", (string)null);
+                    b.ToTable("region_pool", "ipam");
                 });
 
             modelBuilder.Entity("Pdp.ControlPlane.Ipam.Entities.Allocation", b =>

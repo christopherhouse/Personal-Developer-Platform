@@ -36,9 +36,9 @@ public sealed class ControlPlanePostgresFixture : IAsyncLifetime
     {
         await _container.StartAsync();
 
-        // Apply both production migrations onto the one database. Each context keeps its own
-        // __EFMigrationsHistory in its own default schema (public for ipam, registry for registry),
-        // so they never collide.
+        // Apply both production migrations onto the one database. Each context's tables live in their
+        // own schema (ipam / registry); migrations are tracked in __EFMigrationsHistory keyed by
+        // migration_id, so applying both onto one database never collides.
         await using (var ipam = CreateIpamContext())
         {
             await ipam.Database.MigrateAsync();
@@ -56,7 +56,7 @@ public sealed class ControlPlanePostgresFixture : IAsyncLifetime
         _respawner = await Respawner.CreateAsync(conn, new RespawnerOptions
         {
             DbAdapter = DbAdapter.Postgres,
-            SchemasToInclude = ["public", Registry.RegistryDbContext.Schema],
+            SchemasToInclude = [IpamDbContext.Schema, Registry.RegistryDbContext.Schema],
             TablesToIgnore = ["__EFMigrationsHistory"],
         });
     }

@@ -190,6 +190,19 @@ module "postgres" {
     }
   }
 
+  # The control-plane application database holding the ipam / registry / wolverine schemas (spec 006).
+  # Created here (Tofu — the only infra-mutation path, Article II) so the schema migrations and the
+  # per-app UAMI grants have a database to target; the schemas themselves are applied by the EF
+  # migrations run in-VNet as the Entra admin (scripts/run-migrations), not by Tofu. UTF8 / en_US.utf8
+  # matches what the Npgsql/EF stack and the native `cidr` columns expect.
+  databases = {
+    pdp = {
+      name      = "pdp"
+      charset   = "UTF8"
+      collation = "en_US.utf8"
+    }
+  }
+
   # Ensure the hub→zone link exists before the server integrates with the zone (mirrors the
   # original design where the zone module created the link ahead of the server). The server
   # references the zone via private_dns_zone_id but not the link resource directly.

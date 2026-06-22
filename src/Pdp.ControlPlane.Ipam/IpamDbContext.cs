@@ -12,6 +12,10 @@ namespace Pdp.ControlPlane.Ipam;
 /// </summary>
 public class IpamDbContext(DbContextOptions<IpamDbContext> options) : DbContext(options)
 {
+    /// <summary>The PostgreSQL schema this context owns (beside <c>registry</c> and Wolverine's
+    /// <c>wolverine</c>), so least-privilege grants and teardown are per-schema (SC-010).</summary>
+    public const string Schema = "ipam";
+
     /// <summary>Registered region pools (and the platform-shared supernet, index 0).</summary>
     public DbSet<RegionPool> RegionPools => Set<RegionPool>();
 
@@ -27,9 +31,17 @@ public class IpamDbContext(DbContextOptions<IpamDbContext> options) : DbContext(
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Brings B-tree equality (pool_id WITH =) into the GiST index alongside the cidr
-        // overlap operator — the provider emits CREATE EXTENSION in the migration (research §8).
-        modelBuilder.HasPostgresExtension("btree_gist");
+        // This context's tables live in the `ipam` schema (mirrors RegistryDbContext), so the live
+        // least-privilege UAMI grants and teardown are scoped per-schema (SC-010). Locally/tests this
+        // was implicitly `public`; pinning it makes code match the grants/docs (the host-stack var and
+        // the bootstrap GRANT both say `ipam`).
+        modelBuilder.HasDefaultSchema(Schema);
+
+        // Brings B-tree equality (pool_id WITH =) into the GiST index alongside the cidr overlap
+        // operator — the provider emits CREATE EXTENSION in the migration (research §8). Pinned to
+        // `public` (not the `ipam` default schema) so its gist operator classes sit in the default
+        // search_path, where the EXCLUDE-constraint DDL below resolves them without qualification.
+        modelBuilder.HasPostgresExtension("public", "btree_gist");
 
         modelBuilder.Entity<RegionPool>(entity =>
         {
