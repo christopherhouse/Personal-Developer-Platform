@@ -106,10 +106,20 @@ output "pgaadauth_bootstrap_uami_api" {
     -- Connect as the Entra admin (owner) to the ledger, then run on database '${var.postgres_database_name}':
     --   psql "host=${data.azurerm_postgresql_flexible_server.ledger.fqdn} dbname=${var.postgres_database_name} user=<owner-upn> sslmode=require"
     -- PREREQUISITE: run-migrations has created the ipam + registry schemas/tables (owned by this admin).
-    SELECT * FROM pgaadauth_create_principal_with_oid(
-      '${azurerm_user_assigned_identity.api.name}',
-      '${azurerm_user_assigned_identity.api.principal_id}',
-      'service', false, false);
+    -- Register uami-api as an Entra principal IDEMPOTENTLY: create the LOGIN role if missing, then
+    -- (re)apply the pgaadauth security label mapping it to the UAMI object id (the mechanism
+    -- pgaadauth_create_principal_with_oid uses internally). Re-running repairs a MISSING principal or a
+    -- STALE oid (e.g. a recreated UAMI) — pgaadauth_create_principal_with_oid instead errors if the role
+    -- already exists, so it cannot self-heal a 28P01.
+    DO $pg$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${azurerm_user_assigned_identity.api.name}') THEN
+        CREATE ROLE "${azurerm_user_assigned_identity.api.name}" WITH LOGIN;
+      END IF;
+    END
+    $pg$;
+    SECURITY LABEL FOR "pgaadauth" ON ROLE "${azurerm_user_assigned_identity.api.name}"
+      IS 'aadauth,oid=${azurerm_user_assigned_identity.api.principal_id},type=service';
     GRANT USAGE ON SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
@@ -132,10 +142,18 @@ output "pgaadauth_bootstrap_uami_mcp" {
     -- Connect as the Entra admin (owner) to the ledger, then run on database '${var.postgres_database_name}':
     --   psql "host=${data.azurerm_postgresql_flexible_server.ledger.fqdn} dbname=${var.postgres_database_name} user=<owner-upn> sslmode=require"
     -- PREREQUISITE: the uami-api bootstrap has run (the GRANT below references uami-api).
-    SELECT * FROM pgaadauth_create_principal_with_oid(
-      '${azurerm_user_assigned_identity.mcp.name}',
-      '${azurerm_user_assigned_identity.mcp.principal_id}',
-      'service', false, false);
+    -- Register uami-mcp as an Entra principal IDEMPOTENTLY (see the uami-api bootstrap for the rationale):
+    -- create the LOGIN role if missing, then (re)apply the pgaadauth security label mapping it to the UAMI
+    -- object id. Re-running repairs a missing principal or a stale oid (the 28P01 self-heal).
+    DO $pg$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${azurerm_user_assigned_identity.mcp.name}') THEN
+        CREATE ROLE "${azurerm_user_assigned_identity.mcp.name}" WITH LOGIN;
+      END IF;
+    END
+    $pg$;
+    SECURITY LABEL FOR "pgaadauth" ON ROLE "${azurerm_user_assigned_identity.mcp.name}"
+      IS 'aadauth,oid=${azurerm_user_assigned_identity.mcp.principal_id},type=service';
     GRANT USAGE ON SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.mcp.name}";
