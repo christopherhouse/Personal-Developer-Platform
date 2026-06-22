@@ -60,6 +60,18 @@ public static class OwnerAuthorization
             // Publishes the protected-resource metadata (RFC 9728) advertising the issuer + scope.
             .AddMcp(options =>
             {
+                // Behind the YARP ingress + ACA, Request.Scheme/Host are this app's INTERNAL http FQDN, so
+                // the SDK would advertise an internal, externally-unreachable PRM URL in the WWW-Authenticate
+                // challenge and the metadata document. When the host stack supplies the PUBLIC absolute URL
+                // (Mcp:ResourceMetadataUri = the external ingress FQDN's /.well-known/oauth-protected-resource
+                // /<resource-path>), the handler returns it verbatim instead of deriving it from the request.
+                // Empty (local dev / tests) → the SDK falls back to the request-derived relative URL.
+                var publicPrmUri = configuration["Mcp:ResourceMetadataUri"];
+                if (!string.IsNullOrWhiteSpace(publicPrmUri))
+                {
+                    options.ResourceMetadataUri = new Uri(publicPrmUri, UriKind.Absolute);
+                }
+
                 options.ResourceMetadata = new()
                 {
                     AuthorizationServers = { authority },
