@@ -7,9 +7,12 @@
 // Phase 2 (Foundational) wires the host: the verb layer + Wolverine on the private Entra-only Postgres
 // (token data source, NO password), telemetry, MCP transport, and owner auth. Tools are registered later
 // (T034/T046: .WithTools<SpokeTools>()…) — the server runs with zero tools until then.
+using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
+using ModelContextProtocol;
 using Npgsql;
+using Pdp.ControlPlane.Ipam;
 using Pdp.ControlPlane.Verbs;
 using Pdp.ControlPlane.Verbs.Hosting;
 using Pdp.Mcp.Auth;
@@ -83,14 +86,20 @@ builder.Services.AddSingleton<IConfirmationTokens>(sp =>
 // MCP server over STATELESS streamable HTTP — fits ACA scale-to-zero (no session affinity; any replica or
 // cold start serves any call). The verb tools are registered explicitly (not assembly-scan): US2 mutate +
 // destroy (T034); US3 adds the read tools (T046). Each is a thin adapter over the spec-006 verb layer.
+// Tool results carry IPNetwork-typed `cidr` fields (RegionView etc.). System.Text.Json reflecting over
+// IPNetwork throws — IPAddress.ScopeId is invalid for IPv4 — so serialize it as the canonical CIDR string
+// (the same converter the CLI's --json uses). Based on the SDK defaults so MCP's own type handling is kept.
+var toolJsonOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+toolJsonOptions.Converters.Add(new IpNetworkJsonConverter());
+
 builder.Services
     .AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
-    .WithTools<SpokeTools>()
-    .WithTools<FabricTools>()
-    .WithTools<IpamTools>()
-    .WithTools<InventoryTools>()
-    .WithTools<RunTools>();
+    .WithTools<SpokeTools>(toolJsonOptions)
+    .WithTools<FabricTools>(toolJsonOptions)
+    .WithTools<IpamTools>(toolJsonOptions)
+    .WithTools<InventoryTools>(toolJsonOptions)
+    .WithTools<RunTools>(toolJsonOptions);
 
 // Entra OAuth 2.1 protected-resource auth: JWT validation + PRM publication + the single-owner oid policy.
 builder.Services.AddOwnerAuthorization(builder.Configuration);
