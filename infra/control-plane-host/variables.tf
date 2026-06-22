@@ -4,10 +4,15 @@ variable "platform_subscription_id" {
   default     = "8bd05b2f-62c5-4def-9869-f0617ebb3970"
 }
 
-variable "tenant_id" {
-  description = "Entra tenant ID — the OAuth 2.1 authorization-server issuer the MCP endpoint validates JWTs against (login.microsoftonline.com/<tenant>/v2.0)."
+# NOTE: there is intentionally NO `tenant_id` variable. The MCP issuer tenant is taken from
+# data.azurerm_client_config.current.tenant_id (the deploy identity's tenant) so it can never be left
+# empty — a blank tenant builds a malformed authority (login.microsoftonline.com//v2.0) that rejects
+# every token (the live bring-up bug). The owner deploys into their own tenant, so the two are the same.
+
+variable "mcp_audience" {
+  description = "OAuth 2.1 audience the MCP endpoint validates `aud` against — the pdp-mcp Entra app registration's APPLICATION (CLIENT) ID, NOT its api:// URI (Entra v2.0 access tokens carry the resource appId GUID in `aud`). The owner reads this from scripts/bootstrap-mcp-app-registration.ps1 (the app reg is an owner-run bootstrap, not Tofu-managed — avoids a standing Entra-write CI credential). Update if the app registration is recreated."
   type        = string
-  default     = "" # set in tfvars / CI; the owner's tenant.
+  default     = "89643cfe-4041-4055-ba26-cd1d522d4fa4"
 }
 
 variable "owner_object_id" {

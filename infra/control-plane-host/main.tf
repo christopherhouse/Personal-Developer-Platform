@@ -73,9 +73,13 @@ locals {
     "Pooling=true",
   ])
 
-  # The MCP endpoint's OAuth 2.1 protected-resource audience = the pdp-mcp Entra app registration. The JWT
-  # bearer validation rejects any token minted for another audience (contracts/identity-and-auth.md §B).
-  mcp_audience = "api://pdp-mcp"
+  # The MCP endpoint's OAuth 2.1 protected-resource audience. NOTE: this is the pdp-mcp app registration's
+  # APPLICATION (CLIENT) ID, not its api:// URI — Entra v2.0 access tokens always carry the resource's appId
+  # GUID in `aud` (the App ID URI only appears in the scope's `scp` prefix). The JWT bearer validation
+  # matches `aud` against this exact value. Supplied via var.mcp_audience (the owner sets it from the
+  # bootstrap-mcp-app-registration.ps1 output — the app reg is an owner-run bootstrap, not Tofu-managed,
+  # to avoid a standing Entra-write CI credential). (contracts/identity-and-auth.md §B.)
+  mcp_audience = var.mcp_audience
 
   # Non-secret GitHub App config (ids + repo coordinates). The PRIVATE KEY and WEBHOOK SECRET are NOT here
   # — they arrive only as Key Vault-backed ACA secrets. These plain values are safe in config/state.
@@ -550,7 +554,10 @@ module "container_app_mcp" {
         { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = module.application_insights.connection_string },
         { name = "GitHubApp__PrivateKeyPem", secret_name = local.secret_name_gh_app_key },
         # The MCP endpoint's OAuth 2.1 protected-resource config (single-owner authz; data-model §3).
-        { name = "AzureAd__TenantId", value = var.tenant_id },
+        # TenantId is the deploy tenant (the data source) — never a passable var, so it can't be left empty
+        # (an empty tenant builds a malformed authority and rejects every token). Audience = the app reg
+        # appId (v2 `aud`); OwnerOid = the single allow-listed owner.
+        { name = "AzureAd__TenantId", value = data.azurerm_client_config.current.tenant_id },
         { name = "AzureAd__Audience", value = local.mcp_audience },
         { name = "AzureAd__OwnerOid", value = var.owner_object_id },
         ], [

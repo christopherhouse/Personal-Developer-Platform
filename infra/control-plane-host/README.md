@@ -83,8 +83,23 @@ exactly and smoke-validated under OpenTofu 1.11.x (T009).
 1. Add the ACA subnet to `infra/control-plane` (T008) and apply that stack (plan-on-PR / apply-on-merge).
 2. Seed Key Vault secrets (GitHub App private key + webhook HMAC secret) via the secure pipeline path —
    **never** in tofu vars or state.
-3. Apply this stack (plan-on-PR / apply-on-merge); build + push images to ACR over OIDC.
-4. **One-time schema migration** — apply the `ipam` + `registry` EF schemas to the `pdp` database
+3. **One-time MCP OAuth app registration** (owner-run identity bootstrap — deliberately **not** Tofu, to
+   avoid granting CI a standing Entra directory-write credential; same rationale as the `pgaadauth`
+   principal bootstrap). Creates the `pdp-mcp` Entra app registration whose **appId** is the OAuth
+   audience the MCP endpoint validates (Entra v2.0 tokens carry the resource appId in `aud`, not the
+   `api://` URI). Run as the owner; set `var.mcp_audience` to the appId it prints, so the next apply wires
+   the container's `AzureAd__Audience` correctly:
+
+   ```powershell
+   az login
+   cd infra/control-plane-host
+   ./scripts/bootstrap-mcp-app-registration.ps1   # prints the appId → set var.mcp_audience to it
+   ```
+
+   `AzureAd__TenantId` is taken from the deploy identity's tenant (no var — it can't be left empty), and
+   `AzureAd__OwnerOid` is `var.owner_object_id` (the single allow-listed owner `oid`).
+4. Apply this stack (plan-on-PR / apply-on-merge); build + push images to ACR over OIDC.
+5. **One-time schema migration** — apply the `ipam` + `registry` EF schemas to the `pdp` database
    (created by the `infra/control-plane` Tofu `databases` block) so the principal grants have tables to
    target. Like the bootstrap, this runs in-VNet as the Entra **admin** via a transient ACA Job:
 
@@ -99,10 +114,10 @@ exactly and smoke-validated under OpenTofu 1.11.x (T009).
    get DML via the principal grants (next step). The `wolverine` message-store schema is **not** migrated
    here — the always-on `api` owns it and Wolverine auto-builds its tables on startup (the bootstrap
    creates the schema `AUTHORIZATION uami-api`).
-5. **One-time Postgres principal bootstrap** (the single reviewed manual step, SC-010): registers
+6. **One-time Postgres principal bootstrap** (the single reviewed manual step, SC-010): registers
    `uami-api` / `uami-mcp` as Postgres Entra principals + grants them on `ipam`/`registry` (and, for
    `uami-mcp`, role membership in `uami-api` for the api-owned `wolverine` store), so their token logins
-   succeed (research §6). **Run AFTER step 4** (grants target the migrated tables). `pgaadauth_*` must run
+   succeed (research §6). **Run AFTER step 5** (grants target the migrated tables). `pgaadauth_*` must run
    as the Entra **admin** against the private ledger — which is VNet-only. Two ways to do it:
 
    - **Recommended — the transient-Job helper** (run from your laptop/Cloud Shell; the psql runs in-VNet
