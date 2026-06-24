@@ -113,25 +113,29 @@ variable "mcp_image_repository" {
 
 # ---------------------------------------------------------------------------
 # GitHub App (pdp-orchestrator) — NON-SECRET coordinates only. The private key + webhook HMAC secret are
-# NEVER variables: they are seeded into Key Vault out-of-band and read at runtime via the app UAMI.
+# NEVER variables: they are seeded into Key Vault out-of-band and read at runtime via the app UAMI. The
+# app/installation ids are NOT credentials (they appear in URLs + webhook payloads), so — like the
+# owner/repo/branch below — they carry the live platform's values as defaults; the apps were shipping the
+# `0` placeholder, which makes every dispatch fail App auth (a 0 AppId mints an invalid JWT). Override per
+# variable for a different App/installation.
 # ---------------------------------------------------------------------------
 
 variable "github_app_id" {
   description = "The pdp-orchestrator GitHub App id (non-secret)."
   type        = number
-  default     = 0 # set in tfvars / CI for the live deploy
+  default     = 4088578
 }
 
 variable "github_app_installation_id" {
   description = "The pdp-orchestrator App installation id on the target repo's account (non-secret)."
   type        = number
-  default     = 0 # set in tfvars / CI for the live deploy
+  default     = 141178306
 }
 
 variable "github_repo_owner" {
-  description = "Owner (org or user) of the repo hosting the dispatch workflows."
+  description = "Owner (org or user) of the repo hosting the dispatch workflows (the repo owner login)."
   type        = string
-  default     = "Personal-Developer-Platform"
+  default     = "christopherhouse"
 }
 
 variable "github_repo_name" {
