@@ -7,8 +7,10 @@ name: iac-apply
 # is merged and the owner re-runs this workflow manually (workflow_dispatch).
 #
 # THREE PHASES, because of cross-stack ordering dependencies:
-#   * Phase 1 (job `apply`): foundations + platform-dns apply in parallel. Neither depends on
-#     another stack. platform-dns creates the platform-shared Private DNS zones.
+#   * Phase 1 (job `apply`): foundations + platform-dns + platform-observability apply in parallel. None
+#     depends on another stack. platform-dns creates the platform-shared Private DNS zones;
+#     platform-observability creates the platform-shared Log Analytics workspace. Both are referenced by
+#     data source from later stacks (DNS links; diagnostic_settings), so they must exist first.
 #   * Phase 2 (job `apply-dependent`): control-plane + fabric, which `needs` Phase 1. BOTH read
 #     a platform-shared Private DNS zone via `data "azurerm_private_dns_zone"` at plan time
 #     (control-plane → privatelink.postgres for its VNet-integrated server; fabric → the hub
@@ -35,14 +37,16 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Phase 1 — stacks with no cross-stack dependency. platform-dns publishes the zones.
+  # Phase 1 — stacks with no cross-stack dependency. platform-dns publishes the shared Private DNS zones;
+  # platform-observability publishes the shared Log Analytics workspace. Both must exist before the later
+  # stacks that reference them by data source (Phase 2/3 diagnostic_settings + DNS links).
   # ---------------------------------------------------------------------------
   apply:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        stack: [foundations, platform-dns]
+        stack: [foundations, platform-dns, platform-observability]
     concurrency:
       group: tofu-${{ matrix.stack }}
       cancel-in-progress: false
