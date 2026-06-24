@@ -116,9 +116,19 @@ output "pgaadauth_bootstrap_uami_api" {
     GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ipam, registry TO "${azurerm_user_assigned_identity.api.name}";
     ALTER DEFAULT PRIVILEGES IN SCHEMA ipam, registry GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${azurerm_user_assigned_identity.api.name}";
     -- Wolverine message store: the api is the always-on tracking node and OWNS the wolverine schema, so
-    -- its default startup auto-build creates the envelope tables/functions there. AUTHORIZATION scopes the
-    -- api's DDL to this schema only (least-privilege: no database-level CREATE). mcp reaches these via
+    -- its default startup auto-build creates the envelope tables/functions there. mcp reaches these via
     -- membership (below); we deliberately do NOT use UseResourceSetupOnStartup (it purges envelope state).
+    --
+    -- The api MUST hold database-level CREATE, not just schema ownership: Wolverine's startup auto-build
+    -- re-emits `CREATE SCHEMA IF NOT EXISTS wolverine` on EVERY boot, and PostgreSQL 16 runs the database
+    -- ACL_CREATE check BEFORE the IF NOT EXISTS existence short-circuit (CreateSchemaCommand, schemacmds.c).
+    -- So even with the schema already present and owned by the api, that statement fails with
+    -- 42501 "permission denied for database" unless the api can create schemas in the db -- and the build
+    -- never reaches the wolverine_nodes table, so Solo mode cannot start (the live ActivationFailed:
+    -- 42P01 relation "wolverine.wolverine_nodes" does not exist). GRANT CREATE lets the (no-op) CREATE
+    -- SCHEMA pass; AUTHORIZATION still scopes the actual envelope-table DDL to the wolverine schema, and
+    -- mcp never exercises this right (AutoBuildMessageStorageOnStartup=None on the scale-to-zero node).
+    GRANT CREATE ON DATABASE "${var.postgres_database_name}" TO "${azurerm_user_assigned_identity.api.name}";
     CREATE SCHEMA IF NOT EXISTS wolverine AUTHORIZATION "${azurerm_user_assigned_identity.api.name}";
   EOT
 }

@@ -112,8 +112,12 @@ exactly and smoke-validated under OpenTofu 1.11.x (T009).
    The SQL is `dotnet ef migrations script --idempotent` output committed under `scripts/migrations/`;
    regenerate it whenever the EF migrations change. Tables are created **owned by the admin**; the apps
    get DML via the principal grants (next step). The `wolverine` message-store schema is **not** migrated
-   here — the always-on `api` owns it and Wolverine auto-builds its tables on startup (the bootstrap
-   creates the schema `AUTHORIZATION uami-api`).
+   here — the always-on `api` owns it and Wolverine auto-builds its tables on startup. The bootstrap
+   (step 6) creates the schema `AUTHORIZATION uami-api` **and** `GRANT CREATE ON DATABASE` to `uami-api`:
+   ownership alone is not enough because Wolverine re-emits `CREATE SCHEMA IF NOT EXISTS wolverine` on every
+   boot and PostgreSQL 16 checks database `ACL_CREATE` *before* the `IF NOT EXISTS` short-circuit, so without
+   the database-level grant the auto-build fails `42501` and the `wolverine_nodes` table is never created
+   (the node then can't start Solo mode: `42P01 relation "wolverine.wolverine_nodes" does not exist`).
 6. **One-time Postgres principal bootstrap** (the single reviewed manual step, SC-010): registers
    `uami-api` / `uami-mcp` as Postgres Entra principals + grants them on `ipam`/`registry` (and, for
    `uami-mcp`, role membership in `uami-api` for the api-owned `wolverine` store), so their token logins
