@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using NSubstitute;
+using Pdp.ControlPlane.Registry;
 using Pdp.ControlPlane.Registry.Entities;
 using Pdp.ControlPlane.Verbs;
 using Pdp.ControlPlane.Verbs.Handlers;
@@ -85,6 +86,30 @@ public sealed class ToolVerbAdapterTests
             tools.ApplySpokeVend("forged-token", Subscription, "westus3", "app5", Owner));
 
         await spoke.DidNotReceive().CreateAsync(Arg.Any<SpokeCreateRequest>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ApplySpokeVend_when_the_plan_is_not_ready_throws_McpException_and_preserves_the_token()
+    {
+        var spoke = Substitute.For<ISpokeVerbs>();
+        spoke.PlanCreateAsync(Arg.Any<SpokeCreateRequest>(), Arg.Any<CancellationToken>()).Returns(SomePlan());
+        var tools = new SpokeTools(spoke, new ConfirmationTokenService(), Auth);
+
+        var planned = await tools.PlanSpokeVend(Subscription, "westus3", "app5", Owner);
+
+        // The plan run hasn't succeeded yet → the verb rejects with PlanNotReadyException, which the adapter
+        // surfaces as a clear McpException — NOT a single-flight error — without consuming the token.
+        spoke.CreateAsync(Arg.Any<SpokeCreateRequest>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<VerbResult>(
+                new PlanNotReadyException(Guid.CreateVersion7(), EnvironmentStatus.Provisioning, RunPhase.Plan)));
+        await Should.ThrowAsync<McpException>(() =>
+            tools.ApplySpokeVend(planned.ConfirmationToken, Subscription, "westus3", "app5", Owner));
+
+        // Token preserved: once the plan succeeds and the verb dispatches, the SAME token applies cleanly.
+        spoke.CreateAsync(Arg.Any<SpokeCreateRequest>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>())
+            .Returns(SomeResult(EnvironmentStatus.Provisioning));
+        var applied = await tools.ApplySpokeVend(planned.ConfirmationToken, Subscription, "westus3", "app5", Owner);
+        applied.Status.ShouldBe(EnvironmentStatus.Provisioning);
     }
 
     // --- Spoke: destroy (plan → destroy, token + verbatim target) ---------------------------------------

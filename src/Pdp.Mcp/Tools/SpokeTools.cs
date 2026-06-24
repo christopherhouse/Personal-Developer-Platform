@@ -23,9 +23,11 @@ public sealed class SpokeTools(ISpokeVerbs spoke, IConfirmationTokens tokens, IO
     : OwnerTool(auth)
 {
     [McpServerTool, Description(
-        "Plan a spoke vend: returns the plan and a single-use confirmation token. Creates NOTHING. " +
-        "The CIDR is allocated live from the IPAM ledger by size — there is no CIDR input. " +
-        "Call ApplySpokeVend with the returned token and the same spoke name to proceed.")]
+        "Plan a spoke vend: dispatches the plan run and returns IMMEDIATELY with a single-use confirmation " +
+        "token and the env_id. Creates NOTHING and does not wait for the plan to finish. The CIDR is " +
+        "allocated live from the IPAM ledger by size — there is no CIDR input. NEXT: poll ShowEnvironment or " +
+        "RunStatus until the plan run reports Succeeded and review the surfaced plan, THEN call ApplySpokeVend " +
+        "with the returned token and the same spoke name.")]
     public async Task<McpPlanResult> PlanSpokeVend(
         [Description("Target subscription id (Azure GUID) to vend the spoke into.")] string subscription,
         [Description("Registered region with a deployed fabric, e.g. westus3.")] string region,
@@ -43,8 +45,9 @@ public sealed class SpokeTools(ISpokeVerbs spoke, IConfirmationTokens tokens, IO
 
     [McpServerTool, Description(
         "Apply a previously planned spoke vend. Requires the confirmation token from PlanSpokeVend and the " +
-        "exact same spoke name; rejected if the token is missing, expired, already used, or the name does " +
-        "not match. Dispatches the vend and returns the tracked run handle.")]
+        "exact same spoke name. If the plan run has not finished yet you get a clear 'plan not ready' " +
+        "message — check ShowEnvironment/RunStatus and retry; your token is preserved. Once the plan has " +
+        "succeeded, dispatches the vend and returns the tracked run handle.")]
     public async Task<VerbResult> ApplySpokeVend(
         [Description("The confirmation token returned by PlanSpokeVend.")] string confirmationToken,
         [Description("Target subscription id (Azure GUID) — must match the planned vend.")] string subscription,
@@ -55,9 +58,12 @@ public sealed class SpokeTools(ISpokeVerbs spoke, IConfirmationTokens tokens, IO
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        tokens.Validate(confirmationToken, ConfirmationOperation.SpokeVend, spokeName);
+        tokens.Check(confirmationToken, ConfirmationOperation.SpokeVend, spokeName);
         var request = new SpokeCreateRequest(subscription, region, spokeName, size);
-        return await spoke.CreateAsync(request, Confirmation.ForApply(), cancellationToken).ConfigureAwait(false);
+        var result = await InvokeGatedAsync(() => spoke.CreateAsync(request, Confirmation.ForApply(), cancellationToken))
+            .ConfigureAwait(false);
+        tokens.Consume(confirmationToken); // consumed ONLY now that the apply actually dispatched
+        return result;
     }
 
     [McpServerTool, Description(
@@ -88,9 +94,12 @@ public sealed class SpokeTools(ISpokeVerbs spoke, IConfirmationTokens tokens, IO
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        tokens.Validate(confirmationToken, ConfirmationOperation.SpokeDestroy, spokeName);
+        tokens.Check(confirmationToken, ConfirmationOperation.SpokeDestroy, spokeName);
         var target = EnvRef.ByNaturalKey(EnvironmentKind.Spoke, subscription, spokeName);
-        return await spoke.DestroyAsync(target, Confirmation.ForDestroy(spokeName), cancellationToken)
+        var result = await InvokeGatedAsync(() =>
+                spoke.DestroyAsync(target, Confirmation.ForDestroy(spokeName), cancellationToken))
             .ConfigureAwait(false);
+        tokens.Consume(confirmationToken); // consumed ONLY now that the destroy actually dispatched
+        return result;
     }
 }

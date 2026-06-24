@@ -4,7 +4,7 @@
 
 **Created**: 2026-06-18
 
-**Status**: Draft
+**Status**: Draft (amended 2026-06-24 — US2: the MCP plan→confirm→apply flow is asynchronous, non-blocking, and owner-driven, with on-demand run reconciliation on the conversational surface)
 
 **Input**: User description: "Spec 7 — mcp-chatops: host the control plane in Azure and operate the platform conversationally. Stand the spec-006 control plane up as a real, in-Azure service (Azure Container Apps, VNet-integrated, managed identity, App Insights) and add the `pdp-mcp` MCP server — a thin adapter over the same typed verbs — so the owner can vend/destroy spokes, query IPAM, ask 'what's deployed?', and read intent/run history conversationally, with the Article VIII plan/confirm gate surfaced through chat. Unblocks the spec-006 live acceptance (T071/T072). Binding: AVM-first, private & cheap, OpenTofu-only dispatched IaC, .NET 10, reuse spec-005/006 with no duplicated logic, no prohibited deps, destroyable by design. Non-goals: no new verbs, no APIM, no multi-user authz, no workload archetypes (spec 8), no second region (spec 9)."
 
@@ -82,6 +82,46 @@ ledger**.
   use internal ingress; the Entra JWT is validated **at the MCP server** (YARP forwards the
   `Authorization` header, no business logic). Single public surface — tighter Article IX posture.
 
+### Session 2026-06-24
+
+- Q: The MCP `Plan*` tools return the moment the plan run is **dispatched** (no in-tool polling), before
+  the plan has actually run — so the paired `Apply*` call races ahead of the plan being recorded
+  successful and is rejected by the single-flight guard, and the owner "confirms" a plan they never saw.
+  How should the chat plan→apply flow work? → A: **Asynchronous, non-blocking, owner-driven.** A `Plan*`
+  tool dispatches the plan run and returns immediately (env_id, run handle, confirmation token) — **no
+  tool call ever blocks** waiting for a GitHub Actions workflow to finish (the same dispatch-and-return
+  posture `Apply*` already has). The owner reviews the surfaced plan (the captured plan output + run link)
+  via the read tools once the plan run completes, then confirms; the `Apply*` tool dispatches the gated
+  mutation only when the plan run has reached a **successful terminal outcome**.
+- Q: How does the conversational surface learn a dispatched workflow has completed, given the MCP node is
+  **stateless and scale-to-zero** (it cannot receive the `workflow_run` webhook), and **where** does that
+  reconciliation live? → A: **Only in the status-check read tools.** Completion is discovered by
+  correlating the run by its run-name and polling GitHub Actions; **only** the registry-read status tools
+  (`ShowEnvironment` / `RunStatus`) reconcile run status **in-process, on demand, idempotently** before
+  they read. The `Plan*` and `Apply*`/`Destroy*` tools **do not reconcile or poll** — `Plan*` is pure
+  dispatch, and `Apply*`/`Destroy*` is a pure registry read + dispatch. The owner (or agent) therefore
+  checks status between plan and apply — which **is** the Article VIII plan review — so the registry is
+  already up to date when apply reads it. The Api node remains the background safety net (first-terminal-
+  wins dedup makes both drivers safe to run concurrently).
+- Q: When an `Apply*`/`Destroy*` is called before its plan run has succeeded, what does the owner see? →
+  A: A **clear, distinct "the plan has not finished yet — check its status and retry once it has
+  succeeded" response**, kept **separate** from the genuine single-flight rejection (a real concurrent
+  mutating operation already in flight). A failed plan yields "the plan failed; nothing to apply." None of
+  these block the call.
+- Q: The confirmation token is single-use (removed on first validation). When `Apply*`/`Destroy*` is
+  called **before the plan run has succeeded**, is the token consumed or preserved? → A: **Preserved.**
+  The "plan not ready" and "plan failed" rejections MUST NOT consume the token; it is consumed **only**
+  when a gated mutation is actually dispatched. This mirrors the token service already preserving the
+  token on an operation/target mismatch, and prevents a slow or failed plan from burning the token and
+  forcing a needless re-plan.
+- Q: The token's ~5-minute TTL was sized for the old flow where the plan was shown at issue time; in the
+  async flow the token is issued at **plan dispatch** and the plan then queues + runs (2–5 min) before it
+  is reviewable, so 5 minutes can expire before review. What TTL? → A: **A fixed ~15-minute TTL from
+  issue.** The token's security property is single-use + verbatim-target restatement; the TTL is only
+  anti-replay hygiene. A single generous fixed window comfortably covers dispatch + plan + human review
+  and keeps the in-memory token store simple (no coupling to the status tool). (`data-model.md §5` updated
+  from ~5 min to ~15 min.)
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - The control plane runs in-Azure, in-VNet, reaching the private ledger (Priority: P1) 🎯 MVP
@@ -134,28 +174,44 @@ destroy a spoke end to end through an MCP conversation with the plan/confirm gat
 conversational payoff that the whole `pdp-mcp` adapter exists to deliver, and it exercises the Article VIII
 guardrails through the new chat surface.
 
-**Independent Test**: From an Entra-authenticated MCP client, vend a spoke (observe the plan surfaced
-before apply, give the go-ahead, watch the run tracked to terminal, see the spoke in inventory), then
-destroy it (observe the destroy is refused without an explicit target-restating confirmation, supply it,
-watch the destroy tracked to terminal and the IPAM allocation released) — all without touching the CLI.
+**Independent Test**: From an Entra-authenticated MCP client, vend a spoke — the plan tool returns
+**immediately** with a confirmation token and a run handle (nothing blocks on the workflow); poll the run
+until the plan completes and **review the surfaced plan output**; confirm with the token and the spoke
+name; watch the apply tracked to terminal and see the spoke in inventory — then destroy it (observe the
+destroy is refused without an explicit target-restating confirmation, supply it, watch the destroy tracked
+to terminal and the IPAM allocation released) — all without touching the CLI, and with **no tool call ever
+blocking** on a GitHub Actions run.
 
 **Acceptance Scenarios**:
 
 1. **Given** an MCP client authenticated to the Entra-gated `pdp-mcp` endpoint, **When** the owner requests
-   a spoke vend, **Then** the server invokes the spec-006 `spoke create` verb (no reimplementation),
-   surfaces the **plan before any apply is dispatched** (Article VIII), and dispatches only after the owner
-   proceeds.
-2. **Given** a vend that has been dispatched through chat, **When** the run completes, **Then** the
-   conversation can report the terminal outcome (tracked by `env_id`), and the new spoke is discoverable via
-   the inventory tool.
-3. **Given** a request to destroy a spoke via chat, **When** the destroy tool is invoked, **Then** it does
+   a spoke vend, **Then** the server invokes the spec-006 `spoke create` plan verb (no reimplementation),
+   **dispatches the plan run and returns immediately** with the env_id, a run handle, and a single-use
+   confirmation token — the call **does not block** waiting for the plan to finish, and **nothing is
+   applied** (Article VIII).
+2. **Given** a dispatched plan run, **When** the owner asks for its status, **Then** the read tools
+   **reconcile the run on demand** and, once it has completed, surface the **captured plan output and the
+   GitHub run link** for review — the plan the owner reviews is the actual `tofu plan`, not an empty
+   placeholder.
+3. **Given** a plan run that has completed successfully and been reviewed, **When** the owner confirms with
+   the confirmation token and the verbatim spoke name, **Then** the server dispatches the gated apply and
+   returns the tracked run handle immediately; when the run completes, the conversation can report the
+   terminal outcome (tracked by `env_id`) and the new spoke is discoverable via the inventory tool.
+4. **Given** a plan run that has **not yet** reached a successful terminal outcome, **When** the owner calls
+   apply, **Then** the call is rejected with a **clear "the plan has not finished yet — check its status and
+   retry once it has succeeded" response** (and "the plan failed; nothing to apply" if it failed) — **kept
+   distinct** from the single-flight rejection raised when a genuine concurrent mutating operation is already
+   in flight, and **without blocking** the call.
+5. **Given** a request to destroy a spoke via chat, **When** the destroy tool is invoked, **Then** it does
    **not** dispatch until the owner supplies an **explicit confirmation that restates the target spoke's
    name**; the confirmation step is **impossible to bypass** from chat (Article VIII), and a bare "destroy
-   it" without the restated target is refused.
-4. **Given** a confirmed destroy through chat, **When** the destroy run succeeds, **Then** the IPAM
+   it" without the restated target is refused. (The destroy plan→confirm flow is asynchronous and
+   non-blocking in the same way as vend: `PlanSpokeDestroy` dispatches the destroy-plan run and returns a
+   token immediately; `DestroySpoke` dispatches the gated destroy only once that plan run has succeeded.)
+6. **Given** a confirmed destroy through chat, **When** the destroy run succeeds, **Then** the IPAM
    allocation is released, the environment record is marked `destroyed`, and the run outcome is recorded —
    identical behavior to the CLI path, because the same verb backs both.
-5. **Given** an unauthenticated or non-owner caller, **When** it attempts any MCP tool call, **Then** the
+7. **Given** an unauthenticated or non-owner caller, **When** it attempts any MCP tool call, **Then** the
    `pdp-mcp` endpoint rejects it (Entra gate) — only the owner can operate the platform conversationally.
 
 ---
@@ -265,6 +321,18 @@ that no leaked allocations, dangling role grants, or orphaned identities remain.
 - **Confirm-before-destroy bypass attempt through chat**: any phrasing that would dispatch a destroy
   without the explicit, target-restating confirmation is refused (Article VIII) — including indirect or
   "just do it" requests.
+- **Apply called before the plan run finishes**: an `Apply*`/`Destroy*` invoked while its plan run is still
+  in flight is rejected with a **distinct, retryable "the plan has not finished yet" response** — never the
+  misleading single-flight rejection (which is reserved for a genuine concurrent mutating operation), and
+  never by blocking the call until the workflow finishes. A plan run that **failed** yields "the plan
+  failed; nothing to apply." The genuine single-flight guard (a real second mutation against a non-terminal
+  environment) remains in force and distinguishable.
+- **Completion discovery without the Api node / a missed webhook**: because the MCP server is stateless and
+  scale-to-zero it cannot receive the `workflow_run` webhook; the conversational surface MUST still observe
+  a dispatched run reaching terminal. The **status-check read tools** (`ShowEnvironment` / `RunStatus`)
+  **reconcile on demand** (correlated by run-name, polling GitHub Actions, idempotent first-terminal-wins)
+  before they read, so the chat flow advances runs by itself even if the always-on Api node's background
+  reconciler or webhook is unavailable. The `Plan*` / `Apply*` / `Destroy*` tools do **not** reconcile.
 - **Scale-to-zero vs. always-on tracking**: the webhook handler and polling reconciler must remain
   reachable/running to catch `workflow_run` deliveries and sweep for missed ones within the spec-006 bound
   (≤60s sweep, ~2 min settle); a scale-to-zero configuration that would drop webhooks or stall the
@@ -360,11 +428,41 @@ that no leaked allocations, dangling role grants, or orphaned identities remain.
 
 - **FR-012**: Every **mutating** verb invoked through `pdp-mcp` MUST **surface its plan before any apply is
   dispatched** (Article VIII; spec-006 FR-006), so the owner sees the intended change in the conversation
-  before it proceeds.
+  before it proceeds. The plan the owner reviews MUST be the **actual captured plan output** (the `tofu
+  plan`) with its run link — not an empty or placeholder result.
 - **FR-013**: Every **destructive** verb invoked through `pdp-mcp` MUST require an **explicit, unbypassable
   confirmation that restates the target's name** before it dispatches (Article VIII; spec-006 FR-007). A
   conversational request **can never destroy** without that confirmation — there MUST be no chat phrasing,
   default, or shortcut that dispatches a destroy without the restated-target confirmation step.
+- **FR-018**: The chat plan→confirm→apply flow MUST be **asynchronous and non-blocking**: a `Plan*` tool
+  MUST **dispatch the plan run and return immediately** (env_id, run handle, single-use confirmation token),
+  and an `Apply*`/`Destroy*` tool MUST **dispatch the gated mutation and return immediately** with the
+  tracked run handle. **No MCP tool call may block** waiting for a GitHub Actions workflow to complete. The
+  owner reviews the surfaced plan (FR-012) via the read tools between the plan and the confirm; an
+  `Apply*`/`Destroy*` MUST dispatch the gated mutation **only when the plan run has reached a successful
+  terminal outcome**.
+- **FR-019**: When an `Apply*`/`Destroy*` is invoked while its plan run has **not yet reached a successful
+  terminal outcome**, the MCP surface MUST reject it with a **clear, retryable response distinct from the
+  single-flight rejection**: "the plan has not finished yet — check its status and retry once it has
+  succeeded" while the plan is still in flight, and "the plan failed; nothing to apply" when it failed. The
+  genuine single-flight rejection (a real concurrent mutating operation already in flight against a
+  non-terminal environment) MUST remain in force and MUST be distinguishable from "plan not ready." This
+  is presentation/sequencing on the adapter — it introduces **no new verb** and does not change the verb
+  layer's single-flight invariant. The single-use confirmation token MUST be **preserved** (not consumed)
+  on both the "plan not ready" and "plan failed" rejections — it is consumed **only** when a gated mutation
+  is actually dispatched — so a slow or failed plan never forces a needless re-plan (consistent with the
+  token service already preserving the token on an operation/target mismatch).
+- **FR-020**: The conversational surface MUST be able to **observe a dispatched run reach a recorded
+  terminal outcome without depending on the always-on Api node**. Because the MCP server is stateless and
+  scale-to-zero (it cannot receive the `workflow_run` webhook), the **status-check read tools**
+  (`ShowEnvironment` / `RunStatus`) MUST **reconcile run status on demand** — in-process, correlated by
+  run-name, polling the execution plane, and **idempotent (first-terminal-wins)** so it is safe to run
+  concurrently with the Api node's background reconciler/webhook. Reconciliation lives **only** in these
+  read tools: the `Plan*` and `Apply*`/`Destroy*` tools MUST NOT reconcile or poll — `Plan*` is pure
+  dispatch, and `Apply*`/`Destroy*` is a pure registry read + dispatch that relies on a prior status read
+  having recorded the plan's terminal outcome (which is also the Article VIII review step). This reuses the
+  existing spec-006 run-tracking/reconcile logic (**no reimplementation**, no new verb); the Api node
+  remains the background safety net.
 
 #### Reuse, IaC discipline & teardown (Articles I, IV, V, X)
 
@@ -457,6 +555,12 @@ that no leaked allocations, dangling role grants, or orphaned identities remain.
   Actions** (AVM-first, smallest viable SKU); **zero** portal/`az` mutations and **zero** in-process `tofu`
   runs occur (verifiable from run logs), and the ACA subnet is carved from the existing seeded VNet
   reservation (no invented range).
+- **SC-012**: The chat plan→confirm→apply flow is **non-blocking and self-advancing**: **no** MCP tool call
+  blocks waiting for a workflow to finish; an apply issued before its plan has succeeded returns the
+  **"plan not ready" response, never the single-flight rejection**; and the conversational surface observes
+  a dispatched run reach terminal **on demand** even when the always-on Api node's background reconciler /
+  webhook is unavailable — verifiable by planning, polling to a reviewed plan, confirming, and reaching a
+  terminal apply entirely through chat with the Api reconciler disabled.
 
 ## Assumptions
 

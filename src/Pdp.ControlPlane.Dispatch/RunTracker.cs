@@ -100,48 +100,79 @@ public sealed class RunTracker(
         var inFlight = await context.Environments
             .AsNoTracking()
             .Where(e => e.Status == EnvironmentStatus.Provisioning || e.Status == EnvironmentStatus.Destroying)
+            .Select(e => e.EnvId)
             .ToListAsync(cancellationToken);
 
         var advanced = 0;
-        foreach (var environment in inFlight)
+        foreach (var envId in inFlight)
         {
-            var run = await context.ProvisioningRuns
-                .AsNoTracking()
-                .Where(r => r.EnvId == environment.EnvId)
-                .OrderByDescending(r => r.DispatchedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (run is null)
+            if (await ReconcileOneAsync(envId, cancellationToken).ConfigureAwait(false))
             {
-                continue;
-            }
-
-            if (IsTerminal(run.Outcome))
-            {
-                // A terminal Plan run legitimately leaves the environment non-terminal (Provisioning/
-                // Destroying) while it awaits the owner's confirmation (Article VIII) — do NOT re-emit
-                // or it would loop every sweep. Apply/Destroy runs that left the environment stuck DO
-                // get re-emitted to unstick them (SC-006).
-                if (run.Phase != RunPhase.Plan)
-                {
-                    await EmitLifecycleAsync(environment.EnvId, run.Phase, run.Outcome, cancellationToken)
-                        .ConfigureAwait(false);
-                    advanced++;
-                }
-
-                continue;
-            }
-
-            var observed = await QueryGitHubRunAsync(environment.EnvId, run.Phase, cancellationToken)
-                .ConfigureAwait(false);
-            if (observed is not null && IsTerminal(observed.Outcome))
-            {
-                await RecordRunStatusAsync(observed, TrackingSource.Reconciler, cancellationToken)
-                    .ConfigureAwait(false);
                 advanced++;
             }
         }
 
         return advanced;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ReconcileEnvironmentAsync(Guid envId, CancellationToken cancellationToken = default)
+    {
+        // Only a non-terminal environment has an in-flight run worth advancing; a terminal one is a no-op
+        // (and must not re-emit). This scopes the conversational status-read reconcile to one env (FR-020).
+        var status = await context.Environments
+            .AsNoTracking()
+            .Where(e => e.EnvId == envId)
+            .Select(e => (EnvironmentStatus?)e.Status)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (status is not (EnvironmentStatus.Provisioning or EnvironmentStatus.Destroying))
+        {
+            return 0;
+        }
+
+        return await ReconcileOneAsync(envId, cancellationToken).ConfigureAwait(false) ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Advances one non-terminal environment's latest run toward a recorded terminal outcome (the shared
+    /// body of <see cref="ReconcileInFlightAsync"/> and <see cref="ReconcileEnvironmentAsync"/>). Returns
+    /// whether a run was advanced.
+    /// </summary>
+    private async Task<bool> ReconcileOneAsync(Guid envId, CancellationToken cancellationToken)
+    {
+        var run = await context.ProvisioningRuns
+            .AsNoTracking()
+            .Where(r => r.EnvId == envId)
+            .OrderByDescending(r => r.DispatchedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (run is null)
+        {
+            return false;
+        }
+
+        if (IsTerminal(run.Outcome))
+        {
+            // A terminal Plan run legitimately leaves the environment non-terminal (Provisioning/
+            // Destroying) while it awaits the owner's confirmation (Article VIII) — do NOT re-emit or it
+            // would loop every sweep. Apply/Destroy runs that left the environment stuck DO get re-emitted
+            // to unstick them (SC-006).
+            if (run.Phase != RunPhase.Plan)
+            {
+                await EmitLifecycleAsync(envId, run.Phase, run.Outcome, cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+
+            return false;
+        }
+
+        var observed = await QueryGitHubRunAsync(envId, run.Phase, cancellationToken).ConfigureAwait(false);
+        if (observed is not null && IsTerminal(observed.Outcome))
+        {
+            await RecordRunStatusAsync(observed, TrackingSource.Reconciler, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        return false;
     }
 
     private async Task EmitLifecycleAsync(

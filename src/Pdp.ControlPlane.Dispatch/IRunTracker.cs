@@ -28,6 +28,16 @@ public interface IRunTracker
     /// Returns the number of runs advanced. A missed-webhook run reaches terminal within ~2 min (SC-006).
     /// </summary>
     Task<int> ReconcileInFlightAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// <b>On-demand, targeted</b> reconcile of a single environment's in-flight run (FR-020): the same
+    /// correlate-by-run-name → query GitHub → record-terminal logic as the sweep, but scoped to
+    /// <paramref name="envId"/>, so a conversational status read advances <i>its</i> run without sweeping
+    /// every in-flight environment. A no-op (returns 0) if the environment is unknown or already terminal.
+    /// Idempotent (first-terminal-wins), so it is safe to run concurrently with the background sweep —
+    /// this is what lets the stateless, scale-to-zero MCP node observe completion without the Api node.
+    /// </summary>
+    Task<int> ReconcileEnvironmentAsync(Guid envId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

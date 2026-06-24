@@ -92,8 +92,8 @@ Tool descriptions state the confirmation requirement; identity is read only from
 |---|---|---|
 | `operation` | enum | e.g. `SpokeDestroy`, `FabricCreate` — bound at issue |
 | `targetName` | string | the env/spoke/fabric name the plan was generated for |
-| `expiresAt` | timestamp | ~5 min TTL |
-| (token value) | signed string / opaque id | single-use; removed on first validation |
+| `expiresAt` | timestamp | ~15 min TTL (issued at plan **dispatch**, so the window covers plan queue + run + review — clarify 2026-06-24) |
+| (token value) | signed string / opaque id | single-use; consumed **only** when a gated mutation is dispatched — **preserved** on operation/target mismatch, "plan not ready", or "plan failed" (clarify 2026-06-24) |
 
 `Apply/Destroy` rejects (`McpException`) if the token is missing, expired, already used, the operation
 mismatches, or the supplied `target` ≠ `targetName`. This realizes "a chat request can never destroy

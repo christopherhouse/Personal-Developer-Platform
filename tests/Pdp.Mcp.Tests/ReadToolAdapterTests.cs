@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using NSubstitute;
+using Pdp.ControlPlane.Dispatch;
 using Pdp.ControlPlane.Inventory.Model;
 using Pdp.ControlPlane.Ipam;
 using Pdp.ControlPlane.Registry.Entities;
@@ -39,6 +40,10 @@ public sealed class ReadToolAdapterTests
         new(region, 7, IPNetwork.Parse("10.7.0.0/16"), null, [], new FreeSpace(0, []));
 
     private static InventorySnapshot EmptySnapshot() => new([], [], [], [], [], [], []);
+
+    private static RunRecord SomeRun(Guid runId, Guid envId) =>
+        new(runId, envId, RunPhase.Plan, "spoke-vend.yml", new Dictionary<string, string>(),
+            null, null, RunOutcome.Dispatched, null, DateTimeOffset.UnixEpoch, null, null);
 
     // --- IPAM (QueryIpam — one region or all) -----------------------------------------------------------
 
@@ -104,7 +109,7 @@ public sealed class ReadToolAdapterTests
     public async Task ShowEnvironment_parses_the_env_ref_and_reads_recorded_intent_from_the_registry()
     {
         var runs = Substitute.For<IRunVerbs>();
-        var tools = new RunTools(runs, Auth);
+        var tools = new RunTools(runs, Substitute.For<IRunTracker>(), Auth);
 
         await tools.ShowEnvironment($"spoke:{Subscription}:app5", Owner);
 
@@ -118,7 +123,7 @@ public sealed class ReadToolAdapterTests
     {
         var runs = Substitute.For<IRunVerbs>();
         runs.GetRunsAsync(Arg.Any<EnvRef>(), Arg.Any<CancellationToken>()).Returns([]);
-        var tools = new RunTools(runs, Auth);
+        var tools = new RunTools(runs, Substitute.For<IRunTracker>(), Auth);
 
         await tools.RunHistory($"spoke:{Subscription}:app5", Owner);
 
@@ -132,18 +137,65 @@ public sealed class ReadToolAdapterTests
     {
         var runs = Substitute.For<IRunVerbs>();
         var runId = Guid.CreateVersion7();
-        var tools = new RunTools(runs, Auth);
+        var tools = new RunTools(runs, Substitute.For<IRunTracker>(), Auth);
 
         await tools.RunStatus(runId.ToString(), Owner);
 
         await runs.Received(1).GetRunAsync(runId, Arg.Any<CancellationToken>());
     }
 
+    // --- On-demand reconcile (FR-020): only the status-check reads reconcile -----------------------------
+
+    [Fact]
+    public async Task ShowEnvironment_reconciles_the_env_on_demand_before_reading()
+    {
+        var runs = Substitute.For<IRunVerbs>();
+        var tracker = Substitute.For<IRunTracker>();
+        var envId = Guid.CreateVersion7();
+        var tools = new RunTools(runs, tracker, Auth);
+
+        await tools.ShowEnvironment(envId.ToString(), Owner);
+
+        // The status read advances this env's run itself (independent of the Api node), then reads.
+        await tracker.Received(1).ReconcileEnvironmentAsync(envId, Arg.Any<CancellationToken>());
+        await runs.Received().GetEnvironmentAsync(
+            Arg.Is<EnvRef>(e => e.EnvId == envId), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunStatus_reconciles_the_runs_environment_before_reading()
+    {
+        var runs = Substitute.For<IRunVerbs>();
+        var tracker = Substitute.For<IRunTracker>();
+        var runId = Guid.CreateVersion7();
+        var envId = Guid.CreateVersion7();
+        runs.GetRunAsync(runId, Arg.Any<CancellationToken>()).Returns(SomeRun(runId, envId));
+        var tools = new RunTools(runs, tracker, Auth);
+
+        await tools.RunStatus(runId.ToString(), Owner);
+
+        await tracker.Received(1).ReconcileEnvironmentAsync(envId, Arg.Any<CancellationToken>());
+        await runs.Received(2).GetRunAsync(runId, Arg.Any<CancellationToken>()); // pre-read for env_id, then fresh
+    }
+
+    [Fact]
+    public async Task RunHistory_does_not_reconcile()
+    {
+        var runs = Substitute.For<IRunVerbs>();
+        var tracker = Substitute.For<IRunTracker>();
+        runs.GetRunsAsync(Arg.Any<EnvRef>(), Arg.Any<CancellationToken>()).Returns([]);
+        var tools = new RunTools(runs, tracker, Auth);
+
+        await tools.RunHistory($"spoke:{Subscription}:app5", Owner);
+
+        await tracker.DidNotReceive().ReconcileEnvironmentAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task ShowEnvironment_with_an_unparseable_ref_throws_before_the_verb_runs()
     {
         var runs = Substitute.For<IRunVerbs>();
-        var tools = new RunTools(runs, Auth);
+        var tools = new RunTools(runs, Substitute.For<IRunTracker>(), Auth);
 
         await Should.ThrowAsync<McpException>(() => tools.ShowEnvironment("not-an-env-ref", Owner));
         await runs.DidNotReceive().GetEnvironmentAsync(Arg.Any<EnvRef>(), Arg.Any<CancellationToken>());
@@ -153,7 +205,7 @@ public sealed class ReadToolAdapterTests
     public async Task RunStatus_with_a_non_guid_id_throws_before_the_verb_runs()
     {
         var runs = Substitute.For<IRunVerbs>();
-        var tools = new RunTools(runs, Auth);
+        var tools = new RunTools(runs, Substitute.For<IRunTracker>(), Auth);
 
         await Should.ThrowAsync<McpException>(() => tools.RunStatus("not-a-guid", Owner));
         await runs.DidNotReceive().GetRunAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
@@ -172,7 +224,7 @@ public sealed class ReadToolAdapterTests
         await Should.ThrowAsync<McpException>(() => new IpamTools(ipam, Auth).QueryIpam(someoneElse));
         await Should.ThrowAsync<McpException>(() => new InventoryTools(inventory, Auth).WhatsDeployed(someoneElse));
         await Should.ThrowAsync<McpException>(() => new InventoryTools(inventory, Auth).ListEnvironments(someoneElse));
-        await Should.ThrowAsync<McpException>(() => new RunTools(runs, Auth).ShowEnvironment($"spoke:{Subscription}:app5", someoneElse));
+        await Should.ThrowAsync<McpException>(() => new RunTools(runs, Substitute.For<IRunTracker>(), Auth).ShowEnvironment($"spoke:{Subscription}:app5", someoneElse));
 
         await ipam.DidNotReceive().QueryAllAsync(Arg.Any<CancellationToken>());
         await inventory.DidNotReceive().GetSnapshotAsync(Arg.Any<CancellationToken>());

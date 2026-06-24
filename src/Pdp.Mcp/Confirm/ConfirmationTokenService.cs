@@ -14,8 +14,12 @@ namespace Pdp.Mcp.Confirm;
 /// </summary>
 public sealed class ConfirmationTokenService(TimeProvider? timeProvider = null) : IConfirmationTokens
 {
-    /// <summary>The confirmation-token lifetime (~5 minutes — contracts/mcp-tool-surface.md §plan/confirm).</summary>
-    private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(5);
+    /// <summary>
+    /// The confirmation-token lifetime (~15 minutes — clarify 2026-06-24). Widened from ~5 min because the
+    /// token is issued at plan <b>dispatch</b>: the window must cover the plan run's queue + execution
+    /// (2–5 min) plus the owner's review, not just the review.
+    /// </summary>
+    private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(15);
 
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly ConcurrentDictionary<string, Entry> _tokens = new(StringComparer.Ordinal);
@@ -32,7 +36,7 @@ public sealed class ConfirmationTokenService(TimeProvider? timeProvider = null) 
     }
 
     /// <inheritdoc />
-    public void Validate(string token, ConfirmationOperation operation, string targetName)
+    public void Check(string token, ConfirmationOperation operation, string targetName)
     {
         if (string.IsNullOrWhiteSpace(token) || !_tokens.TryGetValue(token, out var entry))
         {
@@ -44,7 +48,7 @@ public sealed class ConfirmationTokenService(TimeProvider? timeProvider = null) 
         {
             _tokens.TryRemove(token, out _);
             throw new McpException(
-                "Confirmation token has expired (it is valid for ~5 minutes). Re-run the Plan… tool.");
+                "Confirmation token has expired (it is valid for ~15 minutes). Re-run the Plan… tool.");
         }
 
         if (entry.Operation != operation ||
@@ -57,9 +61,12 @@ public sealed class ConfirmationTokenService(TimeProvider? timeProvider = null) 
                 "restated verbatim, with the token from its own Plan… call.");
         }
 
-        // Single-use: a token is good for exactly one mutation (Article VIII / SC-002).
-        _tokens.TryRemove(token, out _);
+        // No removal here: the token is consumed by Consume(), and ONLY once a gated mutation actually
+        // dispatches — so a premature apply ("plan not ready") leaves it redeemable (clarify 2026-06-24).
     }
+
+    /// <inheritdoc />
+    public void Consume(string token) => _tokens.TryRemove(token, out _);
 
     private sealed record Entry(ConfirmationOperation Operation, string TargetName, DateTimeOffset ExpiresAt);
 }

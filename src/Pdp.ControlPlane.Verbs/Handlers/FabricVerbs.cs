@@ -90,7 +90,8 @@ public sealed class FabricVerbs(
                 return await ConfirmCreateAsync(existing, request.RegionIndex, confirmation, cancellationToken).ConfigureAwait(false);
             }
 
-            throw new OperationInProgressException(existing.EnvId, existing.Status);
+            // Plan not yet succeeded → "plan not ready"/"plan failed" vs genuine single-flight (FR-019).
+            throw PlanGate.RejectionFor(existing.EnvId, existing.Status, latest);
         }
 
         // Direct one-shot vend (no prior plan): validate → register region → dispatch mode=apply → track.
@@ -168,7 +169,8 @@ public sealed class FabricVerbs(
                 return await ConfirmDestroyAsync(env, regionView.RegionIndex, cancellationToken).ConfigureAwait(false);
             }
 
-            throw new OperationInProgressException(env.EnvId, env.Status);
+            // Destroy plan not yet succeeded → "plan not ready"/"plan failed" vs single-flight (FR-019).
+            throw PlanGate.RejectionFor(env.EnvId, env.Status, latest);
         }
 
         if (env.Status is EnvironmentStatus.Requested or EnvironmentStatus.Provisioning)
