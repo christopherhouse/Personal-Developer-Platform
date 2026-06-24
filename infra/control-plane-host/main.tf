@@ -29,8 +29,6 @@ locals {
   resource_group_name = "rg-pdp-${local.region}-controlplane-host"
   acr_name            = "crpdp${local.region}controlplane" # alnum 5-50, no hyphens
   key_vault_name      = "kv-pdp-${local.region}-cph"       # <=24 chars, starts letter, no `--`
-  law_name            = "log-pdp-${local.region}-controlplane"
-  appinsights_name    = "appi-pdp-${local.region}-controlplane"
   aca_env_name        = "cae-pdp-${local.region}-controlplane"
   app_name_ingress    = "ca-pdp-${local.region}-ingress"
   app_name_api        = "ca-pdp-${local.region}-api"
@@ -145,6 +143,15 @@ module "acr" {
   admin_enabled           = false
   zone_redundancy_enabled = false # module forces this off for non-Premium anyway; explicit for clarity
 
+  # Ship ACR diagnostics to the platform-shared workspace ("all resources -> Log Analytics"). allLogs +
+  # AllMetrics are the AVM defaults, so only the destination is named.
+  diagnostic_settings = {
+    to_la = {
+      name                  = "to-log-analytics"
+      workspace_resource_id = data.azurerm_log_analytics_workspace.platform.id
+    }
+  }
+
   # Credential-free pull: grant AcrPull to each app's UAMI principal (data-model §2). UAMI principals are
   # service principals in Entra, hence principal_type = "ServicePrincipal".
   role_assignments = {
@@ -195,6 +202,15 @@ module "key_vault" {
 
   sku_name = "standard"
 
+  # Ship Key Vault audit logs + diagnostics to the platform-shared workspace ("all resources -> Log
+  # Analytics"). allLogs + AllMetrics are the AVM defaults, so only the destination is named.
+  diagnostic_settings = {
+    to_la = {
+      name                  = "to-log-analytics"
+      workspace_resource_id = data.azurerm_log_analytics_workspace.platform.id
+    }
+  }
+
   # NETWORK POSTURE — OWNER DECISION before the live deploy (T026/T039): this sets RBAC-gated access over
   # the public network path (network_acls = null disables the module's default deny-all firewall, which
   # would otherwise block ACA from resolving the secrets). Data-plane access is still restricted to the two
@@ -224,49 +240,12 @@ module "key_vault" {
 }
 
 # ---------------------------------------------------------------------------
-# T017 — Log Analytics workspace (PerGB2018, ~1 GB/day cap). Required by the ACA managed environment and
-# the workspace-based Application Insights (T048). Daily cap + 30-day retention keep it cheap (Article IX).
+# Log Analytics workspace + workspace-based Application Insights — MOVED to infra/platform-observability
+# (the platform-shared telemetry stack), so EVERY platform stack ships to one sink. This stack now CONSUMES
+# them by data source (data.tf): the ACA env ships logs to the shared workspace and the api/mcp apps export
+# to the shared App Insights. The previous local `log-pdp-westus3-controlplane` workspace +
+# `appi-pdp-westus3-controlplane` App Insights are destroyed by this migration (acceptable — low log volume).
 # ---------------------------------------------------------------------------
-
-module "log_analytics" {
-  source  = "Azure/avm-res-operationalinsights-workspace/azurerm"
-  version = "0.5.1"
-
-  name                = local.law_name
-  resource_group_name = azurerm_resource_group.host.name
-  location            = azurerm_resource_group.host.location
-
-  log_analytics_workspace_sku               = "PerGB2018"
-  log_analytics_workspace_retention_in_days = 30
-  log_analytics_workspace_daily_quota_gb    = 1
-
-  enable_telemetry = false
-  tags             = local.tags
-}
-
-# ---------------------------------------------------------------------------
-# T048 (US4) — Application Insights (workspace-based) — the env_id-correlated telemetry sink.
-# The spec-006 verb layer ALREADY emits OpenTelemetry traces/metrics stamped with env_id
-# (ControlPlaneTelemetry, spec-006 T022); this stack just provisions the sink and the api/mcp apps export
-# to it via UseAzureMonitor() when APPLICATIONINSIGHTS_CONNECTION_STRING is set (T049). Workspace-based:
-# telemetry lands in the T017 Log Analytics workspace (workspace_id), which already carries the daily cap,
-# so there is no second cost surface (Article IX). application_type "web" = standard ASP.NET Core app.
-# ---------------------------------------------------------------------------
-
-module "application_insights" {
-  source  = "Azure/avm-res-insights-component/azurerm"
-  version = "0.4.0"
-
-  name                = local.appinsights_name
-  resource_group_name = azurerm_resource_group.host.name
-  location            = azurerm_resource_group.host.location
-
-  application_type = "web"
-  workspace_id     = module.log_analytics.resource_id # workspace-based: data flows into the LAW (T017)
-
-  enable_telemetry = false
-  tags             = local.tags
-}
 
 # ---------------------------------------------------------------------------
 # T018 — ACA managed environment (workload-profiles, VNet-integrated, EXTERNAL).
@@ -291,7 +270,7 @@ module "managed_environment" {
   location            = azurerm_resource_group.host.location
 
   log_analytics_workspace = {
-    resource_id = module.log_analytics.resource_id
+    resource_id = data.azurerm_log_analytics_workspace.platform.id
   }
 
   # VNet injection into the existing ACA subnet (data source). With a subnet and no internal-LB flag the
@@ -395,7 +374,7 @@ module "container_app_api" {
         # key; empty/unset is a graceful no-op (spec edge case, T051). Azure-generated ingestion credential
         # (not a non-Azure secret) so it rides as a plain env — SC-007 scopes state-secrecy to the GitHub
         # App key + webhook secret + registry password, none of which this is.
-        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = module.application_insights.connection_string },
+        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = data.azurerm_application_insights.platform.connection_string },
         { name = "GitHubApp__PrivateKeyPem", secret_name = local.secret_name_gh_app_key },
         { name = "GitHubApp__WebhookSecret", secret_name = local.secret_name_gh_webhook },
         ], [
@@ -551,7 +530,7 @@ module "container_app_mcp" {
         { name = "ManagedIdentity__ClientId", value = azurerm_user_assigned_identity.mcp.client_id },
         # env_id-correlated telemetry → App Insights (T049 — no longer deferred). UseAzureMonitor() reads
         # this key; empty/unset is a graceful no-op (T051). Azure ingestion credential, plain env (SC-007).
-        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = module.application_insights.connection_string },
+        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = data.azurerm_application_insights.platform.connection_string },
         { name = "GitHubApp__PrivateKeyPem", secret_name = local.secret_name_gh_app_key },
         # The MCP endpoint's OAuth 2.1 protected-resource config (single-owner authz; data-model §3).
         # TenantId is the deploy tenant (the data source) — never a passable var, so it can't be left empty

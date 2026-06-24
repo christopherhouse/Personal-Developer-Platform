@@ -27,3 +27,17 @@ data "azurerm_postgresql_flexible_server" "ledger" {
 data "azurerm_resource_group" "platform_dns" {
   name = var.platform_dns_resource_group_name
 }
+
+# The platform-shared Log Analytics workspace + workspace-based App Insights (owned by
+# infra/platform-observability). The ACA environment ships its logs to this workspace, the api/mcp apps
+# export telemetry to this App Insights (APPLICATIONINSIGHTS_CONNECTION_STRING), and this stack's resources'
+# diagnostic_settings target this workspace. Read by name (loose coupling) — this stack creates neither.
+data "azurerm_log_analytics_workspace" "platform" {
+  name                = var.observability_workspace_name
+  resource_group_name = var.observability_resource_group_name
+}
+
+data "azurerm_application_insights" "platform" {
+  name                = var.observability_appinsights_name
+  resource_group_name = var.observability_resource_group_name
+}
