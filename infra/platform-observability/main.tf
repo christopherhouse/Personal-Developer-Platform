@@ -35,3 +35,23 @@ module "log_analytics" {
   enable_telemetry = false
   tags             = local.tags
 }
+
+# Platform-shared, workspace-based Application Insights — the app-telemetry sink. The spec-006 verb layer
+# already emits OpenTelemetry traces/metrics stamped with env_id; the control-plane apps (and future
+# spec-008 workloads) export to it via UseAzureMonitor() when APPLICATIONINSIGHTS_CONNECTION_STRING is set.
+# It lives HERE, beside its backing workspace (both halves of one telemetry sink in one stack — no
+# cross-stack App-Insights -> workspace link); consumers read its connection string via a data source.
+module "application_insights" {
+  source  = "Azure/avm-res-insights-component/azurerm"
+  version = "0.4.0"
+
+  name                = local.appinsights_name
+  resource_group_name = azurerm_resource_group.observability.name
+  location            = azurerm_resource_group.observability.location
+
+  application_type = "web"
+  workspace_id     = module.log_analytics.resource_id # workspace-based: telemetry flows into the workspace above
+
+  enable_telemetry = false
+  tags             = local.tags
+}

@@ -1,7 +1,8 @@
 # infra/platform-observability
 
-The platform-shared **Log Analytics workspace** — the single sink every PDP resource ships diagnostics to
-and where the workspace-based Application Insights telemetry lands. One workspace, one pane of glass.
+The platform-shared **telemetry resources**: the single **Log Analytics workspace** every PDP resource
+ships diagnostics to, and the workspace-based **Application Insights** the apps export env_id-correlated
+traces/metrics to. Both halves of the telemetry sink live together here. One workspace, one pane of glass.
 
 ## Why a dedicated foundational stack
 

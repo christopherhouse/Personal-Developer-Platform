@@ -13,6 +13,11 @@ locals {
   # stack's resources send diagnostics here, and the workspace-based App Insights telemetry lands here too.
   law_name = "log-pdp-${local.region}-platform"
 
+  # The platform-shared, workspace-based Application Insights — the app-telemetry sink the control-plane
+  # apps (and future spec-008 workloads) export env_id-correlated traces/metrics to. Co-located with its
+  # backing workspace here (telemetry resources together); consumers read its connection string by data source.
+  appinsights_name = "appi-pdp-${local.region}-platform"
+
   # Universal tags — required on every PDP-managed resource group (data-model.md §1). Platform scope:
   # NO pdp-fabric (this unit is region-agnostic platform infrastructure, not a fabric). pdp-platform marks
   # it as platform-shared so inventory (spec 005) classifies it as platform, not orphan drift.

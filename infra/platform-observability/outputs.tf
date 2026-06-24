@@ -17,3 +17,13 @@ output "log_analytics_workspace_name" {
   description = "Name of the platform-shared Log Analytics workspace (consumers data-source it by this name)."
   value       = local.law_name
 }
+
+output "application_insights_id" {
+  description = "Resource ID of the platform-shared workspace-based Application Insights — the app-telemetry sink."
+  value       = module.application_insights.resource_id
+}
+
+output "application_insights_name" {
+  description = "Name of the platform-shared Application Insights (consumers data-source it by this name to read its connection string)."
+  value       = local.appinsights_name
+}
