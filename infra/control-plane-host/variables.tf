@@ -25,6 +25,24 @@ variable "owner_object_id" {
 # Consumed-by-reference inputs (data sources, data.tf) — this stack creates none of these.
 # ---------------------------------------------------------------------------
 
+variable "observability_resource_group_name" {
+  description = "RG of the platform-shared observability stack (infra/platform-observability). The shared Log Analytics workspace + App Insights are looked up here. NOT modified by this stack."
+  type        = string
+  default     = "rg-pdp-westus3-observability"
+}
+
+variable "observability_workspace_name" {
+  description = "Name of the platform-shared Log Analytics workspace (infra/platform-observability). The ACA env ships logs here and the stack's diagnostic_settings target it."
+  type        = string
+  default     = "log-pdp-westus3-platform"
+}
+
+variable "observability_appinsights_name" {
+  description = "Name of the platform-shared Application Insights (infra/platform-observability). The api/mcp apps export env_id-correlated telemetry to its connection string."
+  type        = string
+  default     = "appi-pdp-westus3-platform"
+}
+
 variable "control_plane_resource_group_name" {
   description = "RG of the existing infra/control-plane stack (holds the VNet + private Postgres). The ACA subnet and Postgres FQDN are looked up here. NOT modified by this stack."
   type        = string

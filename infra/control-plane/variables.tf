@@ -22,6 +22,18 @@ variable "platform_dns_resource_group_name" {
   default     = "rg-pdp-westus3-dns"
 }
 
+variable "observability_resource_group_name" {
+  description = "RG of the platform-shared observability stack (infra/platform-observability), applied in phase 1. The shared Log Analytics workspace is looked up here as the diagnostics destination. NOT modified by this stack."
+  type        = string
+  default     = "rg-pdp-westus3-observability"
+}
+
+variable "observability_workspace_name" {
+  description = "Name of the platform-shared Log Analytics workspace (infra/platform-observability) that this stack's resources send diagnostics to (all resources -> Log Analytics)."
+  type        = string
+  default     = "log-pdp-westus3-platform"
+}
+
 locals {
   # Primary region for the control plane (matches the foundations stack). Moved eastus2 →
   # westus3 (Postgres capacity); the control-plane DB is singular and lives in the primary region.

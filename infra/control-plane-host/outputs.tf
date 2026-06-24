@@ -56,17 +56,8 @@ output "uami_mcp" {
   }
 }
 
-# --- Application Insights (US4) ----------------------------------------------
-
-output "application_insights" {
-  description = "Workspace-based Application Insights (T048): resource id + name + the connection string the api/mcp apps export env_id-correlated telemetry to (already wired onto the apps as APPLICATIONINSIGHTS_CONNECTION_STRING — T049)."
-  sensitive   = true # connection_string carries the ingestion credential
-  value = {
-    resource_id       = module.application_insights.resource_id
-    name              = module.application_insights.name
-    connection_string = module.application_insights.connection_string
-  }
-}
+# Application Insights is owned by infra/platform-observability now (the platform-shared telemetry stack);
+# its outputs live there. This stack consumes it by data source for the apps' connection string (data.tf).
 
 # --- Key Vault ----------------------------------------------------------------
 

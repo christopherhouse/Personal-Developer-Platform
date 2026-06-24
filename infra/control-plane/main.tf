@@ -6,6 +6,15 @@
 
 data "azurerm_client_config" "current" {}
 
+# The platform-shared Log Analytics workspace (owned by infra/platform-observability, applied in phase 1).
+# The Postgres server + VNet send their diagnostics here ("all resources -> Log Analytics"). Read by name
+# (loose coupling); this stack creates nothing in the observability RG. On a fresh from-scratch bring-up the
+# observability stack (phase 1) must be applied before this one (phase 2) so the lookup resolves.
+data "azurerm_log_analytics_workspace" "platform" {
+  name                = var.observability_workspace_name
+  resource_group_name = var.observability_resource_group_name
+}
+
 resource "azurerm_resource_group" "control_plane" {
   name     = "rg-pdp-${local.region}-controlplane"
   location = local.region
@@ -92,6 +101,15 @@ module "vnet" {
           name = "Microsoft.App/environments"
         }
       }]
+    }
+  }
+
+  # "All resources -> Log Analytics": ship the VNet's diagnostic logs + AllMetrics to the platform-shared
+  # workspace. The AVM module wires the azurerm_monitor_diagnostic_setting; categories default to the full set.
+  diagnostic_settings = {
+    to_la = {
+      name                  = "to-log-analytics"
+      workspace_resource_id = data.azurerm_log_analytics_workspace.platform.id
     }
   }
 
@@ -206,6 +224,16 @@ module "postgres" {
   # original design where the zone module created the link ahead of the server). The server
   # references the zone via private_dns_zone_id but not the link resource directly.
   depends_on = [azurerm_private_dns_zone_virtual_network_link.controlplane]
+
+  # "All resources -> Log Analytics": ship the server's diagnostic logs + metrics (PostgreSQL
+  # sessions/query-store/etc. and AllMetrics) to the platform-shared workspace. The AVM module wires the
+  # azurerm_monitor_diagnostic_setting for us; categories default to the resource's full log/metric set.
+  diagnostic_settings = {
+    to_la = {
+      name                  = "to-log-analytics"
+      workspace_resource_id = data.azurerm_log_analytics_workspace.platform.id
+    }
+  }
 
   enable_telemetry = false
   tags             = local.tags
