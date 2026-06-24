@@ -1,6 +1,7 @@
 installed:
 - agent-context
 - git
+- ralph
 settings:
   auto_execute_hooks: true
 hooks:
@@ -129,6 +130,14 @@ hooks:
     optional: false
     prompt: Commit task changes?
     description: Auto-commit after task generation
+    condition: null
+  - extension: ralph
+    command: speckit.ralph.run
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Run ralph loop to implement tasks?
+    description: Start autonomous implementation after task generation
     condition: null
   after_implement:
   - extension: git
