@@ -15,6 +15,17 @@ resource "azurerm_resource_group" "foundations" {
   tags     = local.tags
 }
 
+# Article XI (observable by design) — RECORDED EXCEPTION for the bootstrap-root.
+# Every other diagnostic-capable resource ships logs+metrics to the platform-shared Log Analytics
+# workspace (owned by infra/platform-observability). This storage account CANNOT: it is the state
+# backend that observability itself stores its state in (infra/platform-observability/backend.tf), and
+# both stacks apply IN PARALLEL in iac-apply Phase 1. Wiring its diagnostic_settings to that workspace
+# would be a circular, raced dependency (the root referencing a resource that depends on the root) and
+# would intermittently fail greenfield bootstraps. The blob access logs are also low-value here: the
+# account is Entra-only (shared keys disabled), RBAC-scoped, versioned with 30-day retention, and
+# lock-protected. If "who touched state" forensics are later wanted, the non-circular path is an Azure
+# Policy DeployIfNotExists (or a Phase-2+ wiring stack), NOT a phase-1 self-reference. (Recorded
+# justification per the Article V exception pattern; surfaced at plan time for the Constitution Check.)
 module "state_storage" {
   source  = "Azure/avm-res-storage-storageaccount/azurerm"
   version = "0.7.2"

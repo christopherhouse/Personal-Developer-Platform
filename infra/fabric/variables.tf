@@ -29,3 +29,15 @@ variable "platform_dns_resource_group_name" {
   type        = string
   default     = "rg-pdp-westus3-dns"
 }
+
+variable "observability_resource_group_name" {
+  description = "RG of the platform-shared observability stack (infra/platform-observability). The shared Log Analytics workspace is looked up here as the diagnostics destination (Article XI). NOT modified by this stack."
+  type        = string
+  default     = "rg-pdp-westus3-observability"
+}
+
+variable "observability_workspace_name" {
+  description = "Name of the platform-shared Log Analytics workspace (infra/platform-observability). The hub firewall/bastion/VNet/public-IP diagnostic_settings ship logs + metrics here (Article XI — observable by design)."
+  type        = string
+  default     = "log-pdp-westus3-platform"
+}

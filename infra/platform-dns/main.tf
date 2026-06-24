@@ -21,6 +21,13 @@ resource "azurerm_resource_group" "dns" {
 # (docs/conventions.md §1.3 private-DNS exception). NO virtual_network_links here —
 # links belong to fabrics/spokes (ownership rule, research §3). Grow this set by PR as
 # services arrive; ACA's region-qualified zone is deferred to spec 008.
+#
+# Article XI (observable by design) — NOT APPLICABLE here, for three independent reasons: (1) the
+# avm-res-network-privatednszone module (v0.5.0) exposes no diagnostic_settings input; (2) private DNS
+# zones support only AllMetrics (no resource logs) — low-value telemetry; and (3) this stack applies in
+# iac-apply Phase 1, in PARALLEL with infra/platform-observability, so it cannot reference that workspace
+# without a raced dependency (only Phase 2/3 stacks wire diagnostics to it). Same phase-1 carve-out the
+# foundations state account documents.
 # ----------------------------------------------------------------------------
 
 # Postgres Flexible Server private endpoints. Distinct from the control-plane's
