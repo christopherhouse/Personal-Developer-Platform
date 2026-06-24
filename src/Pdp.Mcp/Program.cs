@@ -12,11 +12,13 @@ using Azure.Core;
 using Azure.Identity;
 using ModelContextProtocol;
 using Npgsql;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Pdp.ControlPlane.Ipam;
 using Pdp.ControlPlane.Verbs;
 using Pdp.ControlPlane.Verbs.Hosting;
 using Pdp.Mcp.Auth;
 using Pdp.Mcp.Confirm;
+using Pdp.Mcp.Hosting;
 using Pdp.Mcp.Tools;
 using Wolverine;
 
@@ -61,6 +63,22 @@ else
 // Key Vault (registered last so it wins over the verb layer's DefaultAzureCredential default).
 builder.Services.AddControlPlaneVerbs(builder.Configuration, postgres);
 builder.Services.AddSingleton(credential);
+
+// Hold Wolverine back until the always-on Api node has provisioned the shared `wolverine` message store.
+// This node never builds it (AutoCreate.None — it runs as uami-mcp, which does not own the schema), and
+// Wolverine's Solo-mode startup reads wolverine.wolverine_nodes: if the MCP node cold-starts ahead of that
+// provisioning, the read throws 42P01, the process exits unhandled, and ACA wedges the revision in
+// ActivationFailed (the 2026-06-24 outage). The gate turns that permanent crash into a bounded, self-healing
+// wait. Registered BEFORE UseWolverine so it starts first; /healthz is registered earlier still, so the ACA
+// startup probe still passes while we wait. Only on the in-VNet node (a real shared data source it doesn't
+// own); the local-dev / CLI path (postgres is null) provisions its own store and needs no gate.
+if (postgres is not null)
+{
+    builder.Services.TryAddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton(new WolverineStoreReadinessOptions());
+    builder.Services.AddSingleton<IMessageStoreProbe>(new PostgresMessageStoreProbe(postgres));
+    builder.Services.AddHostedService<WolverineStoreReadinessGate>();
+}
 
 builder.UseWolverine(opts =>
 {

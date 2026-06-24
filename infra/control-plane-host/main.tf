@@ -524,6 +524,25 @@ module "container_app_mcp" {
       image  = "${module.acr.resource.login_server}/${var.mcp_image_repository}:${var.image_tag}"
       cpu    = 0.25
       memory = "0.5Gi"
+
+      # Tie revision readiness to the app's own /healthz (Kestrel) rather than the implicit TCP probe, so a
+      # revision is "ready" only once the host is genuinely serving. This pairs with the MCP node's
+      # WolverineStoreReadinessGate: that gate holds Wolverine back until the always-on Api node has
+      # provisioned the shared `wolverine` store, and /healthz (registered before the gate) answers
+      # throughout the wait. The window — initial_delay 5s + interval 20s × 10 failures ≈ 205s — is sized to
+      # OUTLAST the gate's 180s timeout, so a revision cold-starting ahead of the Api's first-time
+      # provisioning is never killed mid-wait (the 2026-06-24 ActivationFailed incident); if the store truly
+      # never appears, the gate fails fast at 180s and the revision deactivates, which is the correct signal.
+      startup_probes = [{
+        transport               = "HTTP"
+        port                    = 8080 # dotnet/aspnet:10.0 default ASPNETCORE_HTTP_PORTS (= ingress target_port)
+        path                    = "/healthz"
+        initial_delay           = 5
+        interval_seconds        = 20
+        timeout                 = 3
+        failure_count_threshold = 10
+      }]
+
       env = concat([
         { name = "ControlPlane__PostgresConnectionString", value = local.postgres_connection_string_mcp },
         { name = "ControlPlane__PlatformSubscriptionId", value = var.platform_subscription_id },
