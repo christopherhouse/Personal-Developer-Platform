@@ -112,6 +112,11 @@
   Constitution (Article IV): if this feature creates Azure resources, acceptance
   criteria MUST include clean teardown — no orphaned resources, no leaked address
   allocations, no dangling peerings.
+
+  Constitution (Article XI): if this feature creates resources that support Azure
+  diagnostic settings, acceptance criteria MUST include their diagnostics (logs +
+  metrics) flowing to the platform-shared Log Analytics workspace; platform code emits
+  telemetry to the shared workspace-based Application Insights.
 -->
 
 ### Measurable Outcomes

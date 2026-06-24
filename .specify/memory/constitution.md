@@ -1,5 +1,20 @@
 <!--
 Sync Impact Report
+- Version change: 1.0.0 → 1.1.0 (MINOR — new principle added)
+- Modified principles: none redefined
+- Added principles:
+  - Article XI — Observable by Design (sibling to Article IV): every diagnostic-capable
+    managed resource ships logs+metrics to the platform-shared Log Analytics workspace,
+    and it is a per-spec acceptance criterion. Established after the spec-007 observability
+    refactor consolidated telemetry into infra/platform-observability.
+- Templates updated for 1.1.0:
+  - ✅ .specify/templates/spec-template.md — Success Criteria guidance extended with the
+    Article XI diagnostics-to-shared-workspace acceptance criterion (alongside Article IV)
+  - ✅ CLAUDE.md — "The ten articles" → "The eleven articles"
+  - ✅ .specify/templates/plan-template.md — Constitution Check gate is generic and is
+    populated per-feature from this file; no structural change required
+
+Prior report (1.0.0 ratification)
 - Version change: (template, unversioned) → 1.0.0
 - Modified principles: none (initial ratification — all ten principles adopted from
   docs/constitution.md draft)
@@ -117,6 +132,20 @@ Features MUST follow the Spec Kit flow: specify → plan → tasks → implement
 **Rationale**: Spec-first development is the project's chosen method for keeping an
 AI-heavy workflow deliberate; skipping it reintroduces improvisation by the back door.
 
+### Article XI — Observable by Design
+
+Every managed resource that supports Azure diagnostic settings MUST ship its logs and
+metrics to the platform-shared Log Analytics workspace (owned by
+`infra/platform-observability`); platform code (the control plane, the MCP server) MUST
+emit its telemetry to the shared workspace-based Application Insights. "Are its
+diagnostics wired to the shared workspace?" MUST be part of every spec's acceptance
+criteria for any capability that creates resources supporting diagnostic settings.
+
+**Rationale**: A platform operated through conversation is only as debuggable as its
+telemetry; diagnostics that are opt-in get forgotten, so observability is a ratification
+requirement enforced at plan time, not an afterthought bolted on by a CI lint — the
+direct sibling of Article IV's teardown rule.
+
 ## Additional Constraints
 
 - **IaC engine**: OpenTofu only (pinned 1.11.x). No raw Terraform, no Bicep. Providers:
@@ -150,6 +179,9 @@ AI-heavy workflow deliberate; skipping it reintroduces improvisation by the back
   the plan's Complexity Tracking table or the plan reworked.
 - Every spec's acceptance criteria MUST include clean teardown (Article IV) for any
   capability that creates resources.
+- Every spec's acceptance criteria MUST include diagnostics to the platform-shared Log
+  Analytics workspace (Article XI) for any capability that creates resources supporting
+  diagnostic settings.
 - New terminology MUST be added to `docs/glossary.md` before a spec uses it.
 - Testing discipline: integration tests against real dependencies where behavior depends
   on them (e.g., the IPAM allocator MUST be tested against real Postgres via
@@ -176,4 +208,4 @@ constitution amended first.
   constraints above. Complexity beyond what a principle allows MUST be justified in
   writing in the plan.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-11 | **Last Amended**: 2026-06-11
+**Version**: 1.1.0 | **Ratified**: 2026-06-11 | **Last Amended**: 2026-06-24

@@ -9,6 +9,33 @@
 # private-IP output), spoke peering, NSGs, NAT gateway. The fabric only exposes the next-hop.
 
 # ----------------------------------------------------------------------------
+# Article XI (observable by design): the platform-shared Log Analytics workspace
+# (owned by infra/platform-observability, applied in phase 1). Every diagnostic-capable
+# hub resource ships logs + metrics here. Read by name (loose coupling); this stack creates
+# nothing in the observability RG. On a fresh bring-up, observability (phase 1) precedes the
+# fabric so this lookup resolves.
+# ----------------------------------------------------------------------------
+data "azurerm_log_analytics_workspace" "platform" {
+  name                = var.observability_workspace_name
+  resource_group_name = var.observability_resource_group_name
+}
+
+locals {
+  # One diagnostic-settings block, reused by every diagnostic-capable hub module (firewall,
+  # bastion, VNet, the three public IPs). The AVM network diagnostic interface defaults to
+  # log_groups=["allLogs"] + metric_categories=["AllMetrics"], so naming the workspace is enough;
+  # each resource type's supported categories were verified live before wiring (the firewall
+  # POLICY is deliberately absent — Microsoft.Network/firewallPolicies returns
+  # ResourceTypeNotSupported for diagnostic settings).
+  diagnostic_settings = {
+    to_la = {
+      name                  = "to-log-analytics"
+      workspace_resource_id = data.azurerm_log_analytics_workspace.platform.id
+    }
+  }
+}
+
+# ----------------------------------------------------------------------------
 # T007 — Fabric resource group. pdp-fabric=<region> makes it (and its contents)
 # discoverable as this region's hub via Resource Graph (Article III).
 # ----------------------------------------------------------------------------
@@ -91,6 +118,8 @@ module "vnet" {
     }
   }
 
+  diagnostic_settings = local.diagnostic_settings
+
   enable_telemetry = false
   tags             = local.tags
 }
@@ -107,6 +136,8 @@ module "pip_fw_data" {
   name                = "pip-pdp-${local.region}-afw"
   location            = azurerm_resource_group.fabric.location
   resource_group_name = azurerm_resource_group.fabric.name
+
+  diagnostic_settings = local.diagnostic_settings
 
   allocation_method = "Static"
   sku               = "Standard"
@@ -129,6 +160,8 @@ module "pip_fw_mgmt" {
   location            = azurerm_resource_group.fabric.location
   resource_group_name = azurerm_resource_group.fabric.name
 
+  diagnostic_settings = local.diagnostic_settings
+
   allocation_method = "Static"
   sku               = "Standard"
 
@@ -149,6 +182,8 @@ module "pip_bastion" {
   name                = "pip-pdp-${local.region}-bas"
   location            = azurerm_resource_group.fabric.location
   resource_group_name = azurerm_resource_group.fabric.name
+
+  diagnostic_settings = local.diagnostic_settings
 
   allocation_method = "Static"
   sku               = "Standard"
@@ -176,6 +211,10 @@ module "fw_policy" {
   resource_group_name = azurerm_resource_group.fabric.name
 
   firewall_policy_sku = "Basic"
+
+  # NO diagnostic_settings (Article XI): Microsoft.Network/firewallPolicies returns
+  # ResourceTypeNotSupported for diagnostic settings — the policy emits no logs/metrics. The
+  # firewall resource (above) carries the rule-hit telemetry. Verified live before wiring.
 
   enable_telemetry = false
   tags             = local.tags
@@ -217,6 +256,11 @@ module "firewall" {
     public_ip_address_id = module.pip_fw_mgmt.public_ip_id
   }
 
+  # The valuable hub diagnostics: AZFW{Application,Network,Nat}Rule hit logs + AllMetrics to the
+  # shared workspace (Article XI). The firewall POLICY carries no diagnostics — rule-hit telemetry
+  # comes from the firewall resource here.
+  diagnostic_settings = local.diagnostic_settings
+
   enable_telemetry = false
   tags             = local.tags
 }
@@ -242,6 +286,8 @@ module "bastion" {
     create_public_ip     = false
     public_ip_address_id = module.pip_bastion.public_ip_id
   }
+
+  diagnostic_settings = local.diagnostic_settings
 
   enable_telemetry = false
   tags             = local.tags

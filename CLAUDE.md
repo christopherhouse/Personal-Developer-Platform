@@ -10,7 +10,7 @@ The constitution and binding docs are the law for every spec, plan, and line of 
 
 | Document | What it binds |
 |---|---|
-| `.specify/memory/constitution.md` | The ten articles. Violations are wrong by definition. |
+| `.specify/memory/constitution.md` | The eleven articles. Violations are wrong by definition. |
 | `docs/charter.md` | Vision, capabilities, explicit non-goals, success criteria. |
 | `docs/architecture.md` | The *why* behind every structural decision. Changing it is an architecture change, not a feature change. |
 | `docs/tech-stack.md` | Flat tool/version reference, including the prohibited-deps list. |
@@ -33,6 +33,10 @@ The constitution and binding docs are the law for every spec, plan, and line of 
   from chat.
 - **Destroyable by design**: every spec that creates resources includes clean
   teardown in its acceptance criteria.
+- **Observable by design**: every resource that supports diagnostic settings ships
+  logs + metrics to the shared Log Analytics workspace (`infra/platform-observability`);
+  platform code emits telemetry to the shared App Insights. A per-spec acceptance
+  criterion (Article XI).
 - **AVM-first**: prefer Azure Verified Modules; hand-rolled `azurerm`/`azapi` modules
   need a recorded justification in their README.
 - **Private and cheap by default**: no public endpoints unless a spec demands one;
