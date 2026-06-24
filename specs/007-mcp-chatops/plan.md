@@ -40,6 +40,41 @@ acceptance (T071/T072)**: the control plane now executes in-VNet, next to the le
 **No new platform capability or verb** — hosting + a thin MCP adapter only. No APIM, no multi-user authz,
 no workload archetypes (spec 8), no second region (spec 9).
 
+## Amendment 2026-06-24 — async, non-blocking chat plan→confirm→apply (US2)
+
+A defect surfaced in US2's authored-but-not-yet-live MCP plan→apply flow: the `Plan*` tools returned at
+plan **dispatch** (per the original `mcp-tool-surface.md` pseudocode — `EnsureOwner; verb.Plan; issue
+token`), so the paired `Apply*` raced ahead of the plan run being recorded `Succeeded` and was rejected by
+the verb-layer single-flight guard (FR-022a), while the owner "confirmed" a plan they never saw. The CLI
+avoids this by polling the plan to terminal in-process before showing/applying; the MCP tools skipped that.
+
+**Resolution** (spec Clarifications 2026-06-24; FR-018/FR-019/FR-020, SC-012):
+- **Both `Plan*` and `Apply*`/`Destroy*` are dispatch-and-return** — **no** MCP tool call blocks on a
+  workflow (matching `Apply*`'s already-existing posture).
+- **Completion is discovered by on-demand reconcile in the status-read tools only** (`ShowEnvironment` /
+  `RunStatus` call `IRunTracker.ReconcileInFlightAsync` before reading — correlate by run-name, poll the
+  execution plane, idempotent first-terminal-wins). `Plan*`/`Apply*`/`Destroy*` never reconcile. This
+  reuses spec-006 run-tracking — **no new verb** — and makes the chat surface self-sufficient when the
+  always-on Api node's reconciler/webhook is unavailable (research §13 amendment).
+- **`Apply*`/`Destroy*` is a pure registry read + dispatch**: it proceeds only when the plan run is recorded
+  `Succeeded`; otherwise it returns a **distinct, retryable "plan not ready" / "plan failed"** response,
+  kept separate from the genuine single-flight rejection.
+- **Confirmation token**: TTL widened to **~15 min** (issued at dispatch ⇒ must cover plan queue + run +
+  review) and **consumed only on a successful gated dispatch** (preserved on "plan not ready" / "plan
+  failed" / mismatch) so a slow or failed plan never burns it.
+
+**Artifacts updated**: `spec.md` (US2 scenarios, edge cases, FR-018/019/020, SC-012, Clarifications
+2026-06-24), `contracts/mcp-tool-surface.md` (async gate + reconcile-only-in-status-reads invariant),
+`research.md` §12/§13 (timing/TTL/preservation; on-demand reconcile), `data-model.md` §5 (TTL + token
+consumption). `/speckit-tasks` will correct the T032 "no in-tool polling" note and add the US2 tasks; the
+already-pending live steps T040/T041 are the acceptance for this fix.
+
+**Constitution re-check (amendment)**: **PASS, no new deviations.** No new dependency, **no new Azure
+resource**, **no new platform verb** (Article II/X) — the change is adapter sequencing + reuse of the
+spec-006 reconcile path. Article VIII is **strengthened** (the owner now reviews the *actual* `tofu plan`
+before confirming, instead of an empty placeholder). No change to the control/execution-plane split,
+division of truth, or teardown scope. Complexity Tracking remains empty.
+
 ## Technical Context
 
 **Language/Version**: .NET 10 (LTS), C# `latest` — pinned via `global.json` / `Directory.Build.props`

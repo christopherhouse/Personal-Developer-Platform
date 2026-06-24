@@ -220,6 +220,19 @@ call carrying the verbatim target (Article VIII; FR-013, SC-002).
 **Alternatives**: MCP elicitation — rejected (requires stateful SSE). A single tool with a `confirm=true`
 flag — rejected (a model could set it without human intent; not "unbypassable").
 
+**Amendment (2026-06-24 — async, non-blocking plan→confirm)**: The two-tool pattern stands, but the
+**timing** is now explicitly asynchronous. `Plan<Op>` **dispatches** the plan run and returns the token
+**immediately** — it does **not** wait for the plan to finish, so its result carries **no plan output**
+(the owner reviews the plan later via a status read; see §13). The token TTL is widened to **~15 minutes**
+(it is issued at *dispatch*, so the window must cover plan queue + run + human review, not just review —
+clarify 2026-06-24). The token is **single-use but consumed only on a successful gated dispatch** — it is
+**preserved** on an operation/target mismatch, on "plan not ready" (the plan run hasn't reached a
+successful terminal), and on "plan failed", so a slow or failed plan never burns the token. An
+`Apply`/`Destroy` invoked before its plan has succeeded returns a **distinct, retryable** response ("plan
+not finished yet" / "plan failed; nothing to apply"), kept separate from the single-flight rejection
+(FR-018/FR-019). This is presentation/sequencing on the adapter — **no new verb**, no change to the
+verb-layer single-flight invariant.
+
 ---
 
 ## §13 — Decided: in-process verb hosting; the Api is the sole tracking node
@@ -239,9 +252,22 @@ internal HTTP is YARP→Api (webhook) and YARP→MCP (`/mcp`).
 - The MCP node still participates in the durable outbox (so a dispatch enqueued there is durable), but
   scheduled/recurring messages are owned by the Api.
 
+**Amendment (2026-06-24 — on-demand reconcile on the MCP node)**: The constraint above is about the
+**scheduled, recurring** reconciler (the `ReconcileSweep` timer loop) — that still runs on the **Api node
+only**, never on the MCP node. But the MCP **status-read tools** (`ShowEnvironment` / `RunStatus`) MUST
+invoke `IRunTracker.ReconcileInFlightAsync` **on demand** — a single in-process reconcile call before they
+read, **not** a scheduled sweep. This is what lets the stateless, scale-to-zero MCP node (which cannot
+receive the `workflow_run` webhook) advance and observe a dispatched run to recorded-terminal status by
+itself, independent of the Api node's health (FR-020). It is safe to run concurrently with the Api's
+background sweep because recording is **idempotent (first-terminal-wins)**, deduped by
+`(env_id, github_run_id)`. The MCP node already holds the GitHub App credential and `IRunTracker` (it
+needs them to dispatch), so no new dependency is added. Reconciliation lives **only** in these two read
+tools; `Plan*`/`Apply*`/`Destroy*` never reconcile (clarify 2026-06-24).
+
 **Rationale**: matches the actually-shipped spec-006 wiring (CLI references `Pdp.ControlPlane.Verbs`
 directly; the Api is webhook+reconciler only). A scale-to-zero MCP node cannot reliably catch async
-webhooks, so a persistent Api node is required regardless.
+webhooks, so a persistent Api node is required regardless — and the on-demand reconcile above makes the
+chat surface self-sufficient when nobody is watching the Api node.
 
 **Alternative (rejected by the owner, 2026-06-18)**: build verb HTTP endpoints on the Api and make MCP a
 thin HTTP client (single Wolverine node, smaller MCP identity with no Postgres/GitHub access). Rejected to

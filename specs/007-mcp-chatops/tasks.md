@@ -108,7 +108,7 @@ then destroy it (refused without token + verbatim target restatement) — all th
 ### Implementation for User Story 2
 
 - [X] T031 [P] [US2] Implement `src/Pdp.Mcp/Confirm/IConfirmationTokens.cs` + `ConfirmationTokenService.cs`: opaque CSPRNG id, single-use, ~5-min TTL (`TimeProvider`), binds `{operation, targetName}`; throws `McpException` on missing/expired/used/mismatch (data-model §5)
-- [X] T032 [US2] Implement `src/Pdp.Mcp/Tools/SpokeTools.cs` ([McpServerToolType], ctor-inject `ISpokeVerbs` + `IConfirmationTokens` + `IOptions<McpAuthOptions>`): `PlanSpokeVend`/`ApplySpokeVend`, `PlanSpokeDestroy`/`DestroySpoke` (token + verbatim name); `EnsureOwner(ClaimsPrincipal)` via shared `OwnerTool` base (contracts/mcp-tool-surface.md). Thin adapter — no in-tool polling (the contract pseudocode's `EnsureOwner; verb.Plan; issue token`); also added `Tools/McpPlanResult.cs`
+- [X] T032 [US2] Implement `src/Pdp.Mcp/Tools/SpokeTools.cs` ([McpServerToolType], ctor-inject `ISpokeVerbs` + `IConfirmationTokens` + `IOptions<McpAuthOptions>`): `PlanSpokeVend`/`ApplySpokeVend`, `PlanSpokeDestroy`/`DestroySpoke` (token + verbatim name); `EnsureOwner(ClaimsPrincipal)` via shared `OwnerTool` base (contracts/mcp-tool-surface.md). Thin adapter — no in-tool polling (the contract pseudocode's `EnsureOwner; verb.Plan; issue token`); also added `Tools/McpPlanResult.cs`. **SUPERSEDED IN PART by the 2026-06-24 amendment (Phase 9, T062–T072)**: tools still never block/poll, but the async plan→apply contract changed — `Apply*` becomes a pure read+dispatch returning a distinct "plan not ready" response, on-demand reconcile moves into the `ShowEnvironment`/`RunStatus` reads, and the token gains 15-min TTL + consume-on-success. This original implementation is the source of the live plan→apply single-flight defect Phase 9 fixes.
 - [X] T033 [US2] Implement `src/Pdp.Mcp/Tools/FabricTools.cs` (ctor-inject `IFabricVerbs` + `ControlPlaneOptions` for the platform-subscription natural key): `PlanFabricCreate`/`ApplyFabricCreate`, `PlanFabricDestroy`/`DestroyFabric` (token + verbatim region)
 - [X] T034 [US2] Register the tool classes + `IConfirmationTokens` (singleton) in `src/Pdp.Mcp/Program.cs` (`.WithTools<SpokeTools>().WithTools<FabricTools>()`); register `McpAuthOptions` for DI in `AddOwnerAuthorization`; T028–T030 pass (23 tests green)
 - [X] T035 [P] [US2] Implement the `mcp` container app via `avm-res-app-containerapp` 0.9.0 (**internal** ingress, **min replicas 0** scale-to-zero, `uami-mcp`, ACR image, KV-backed GitHub App key only, Entra-token Postgres conn, AzureAd `TenantId`/`Audience`/`OwnerOid` config) in `infra/control-plane-host/main.tf` — App Insights conn string deferred to US4/T049 (graceful no-op until then)
@@ -116,8 +116,8 @@ then destroy it (refused without token + verbatim target restatement) — all th
 - [X] T037 [US2] Edit `src/Pdp.ControlPlane.Ingress/appsettings.json`: add YARP routes `/mcp` (+ `/mcp/{**catch-all}`) and `/.well-known/oauth-protected-resource` (+ catch-all) → internal `control-plane-mcp` cluster (streamable-HTTP passthrough; YARP forwards `Authorization`, validates nothing; no business logic) (contracts/hosting-topology.md)
 - [ ] T038 [US2] Run the one-time bootstrap for `uami-mcp` (`pgaadauth_create_principal_with_oid` + `GRANT` on `ipam`+`registry`) — **BLOCKED (live): the mcp half of the single reviewed manual step. Covered by the same `scripts/bootstrap-postgres-principals.{ps1,sh}` helper (run `mcp`, or default = both); manual fallback = the `pgaadauth_bootstrap_uami_mcp` tofu output.**
 - [ ] T039 [US2] Deploy (images + `tofu apply`) and verify the MCP auth gate live — quickstart Scenario 2
-- [ ] T040 [US2] Live: vend a spoke through an MCP client with the plan surfaced before apply, tracked to terminal — quickstart Scenario 3
-- [ ] T041 [US2] Live: destroy the spoke — refused without token + verbatim name, then succeeds (allocation released, env `destroyed`) — quickstart Scenario 4
+- [ ] T040 [US2] Live: vend a spoke through an MCP client with the plan surfaced before apply, tracked to terminal — quickstart Scenario 3 — **also the acceptance for the Phase 9 amendment**: `PlanSpokeVend` returns a token immediately without blocking; a `ShowEnvironment`/`RunStatus` read surfaces the real plan once it completes; `ApplySpokeVend` before the plan finishes returns the distinct "plan not ready" message (NOT single-flight) and does NOT consume the token; the confirmed apply tracks to terminal (SC-012). Verify it works with the Api node's background reconciler disabled.
+- [ ] T041 [US2] Live: destroy the spoke — refused without token + verbatim name, then succeeds (allocation released, env `destroyed`) — quickstart Scenario 4 — **also verifies the Phase 9 amendment for the destroy flow**: `PlanSpokeDestroy` returns a token immediately; `DestroySpoke` before the destroy-plan finishes returns "plan not ready" (token preserved); the confirmed destroy tracks to terminal.
 
 **Checkpoint**: the owner can vend and destroy a spoke end-to-end through chat with the unbypassable Article VIII gate.
 
@@ -191,6 +191,42 @@ that nothing spec-7 remains and the ledger RG is intact.
 
 ---
 
+## Phase 9: Amendment 2026-06-24 — async, non-blocking chat plan→confirm→apply (US2 fix)
+
+**Goal**: fix the live plan→apply single-flight defect (spec Clarifications 2026-06-24; FR-018/FR-019/FR-020,
+SC-012). The MCP `Plan*`/`Apply*` tools both become dispatch-and-return (no tool call blocks on a workflow);
+completion is discovered by **on-demand reconcile in the `ShowEnvironment`/`RunStatus` reads only**; `Apply*`
+is a pure registry read + dispatch that returns a **distinct, retryable "plan not ready" / "plan failed"**
+response (kept separate from the genuine single-flight rejection); the confirmation token gets a **~15-min
+TTL** and is **consumed only on a successful gated dispatch**. Reuses the spec-006 run-tracking/reconcile
+logic — **no new verb**.
+
+**Independent Test**: through an MCP client, plan a spoke vend (token returned immediately, no block) →
+`ShowEnvironment`/`RunStatus` surfaces the real plan once complete → apply-before-plan-finishes returns
+"plan not ready" with the token preserved → confirmed apply tracks to terminal — with the Api node's
+background reconciler disabled (proves the chat surface self-advances).
+
+### Tests for Phase 9 ⚠️ (write first; ensure they fail before implementation)
+
+- [ ] T062 [P] [US2] Extend `tests/Pdp.Mcp.Tests/ConfirmationTokenServiceTests.cs`: TTL is **~15 min** (controllable `TimeProvider`); the token is **preserved** (still redeemable) after a check that does not dispatch (the "plan not ready"/"plan failed"/mismatch paths) and **consumed only** via the explicit consume-on-success call; expiry still rejects. Update the prior "removed on first validation" assertion to the new consume-on-dispatch semantics.
+- [ ] T063 [P] [US2] Extend `tests/Pdp.Mcp.Tests/ToolVerbAdapterTests.cs` (NSubstitute `ISpokeVerbs`/`IFabricVerbs`/`IRunVerbs`/`IRunTracker`): `Plan*` tools dispatch-and-return without polling; `ShowEnvironment`/`RunStatus` call `IRunTracker` reconcile **before** the read; `RunHistory` and the other reads do **not** reconcile; `Apply*`/`Destroy*` do **not** reconcile and surface the distinct "plan not ready"/"plan failed" `McpException` (vs single-flight) without consuming the token.
+- [ ] T064 [P] [US2] Add verb-layer tests in `tests/Pdp.ControlPlane.Verbs.Tests/PlanConfirmTests.cs` (Testcontainers): a confirm-path `CreateAsync`/`DestroyAsync` whose latest run is a Plan still **in-flight** throws the new `PlanNotReadyException`; a **failed** plan throws `PlanFailedException`; a genuine concurrent mutation still throws `OperationInProgressException` — the three are distinct.
+
+### Implementation for Phase 9
+
+- [ ] T065 [US2] Add a **targeted on-demand reconcile** to the tracker: `IRunTracker.ReconcileEnvironmentAsync(Guid envId, CancellationToken)` in `src/Pdp.ControlPlane.Dispatch/IRunTracker.cs` + `RunTracker.cs`, reusing the existing `QueryGitHubRunAsync` + `RecordRunStatusAsync` (idempotent first-terminal-wins) but scoped to one environment so a status read does not sweep all in-flight envs. No new verb, no duplicated correlation logic.
+- [ ] T066 [US2] Distinguish "plan not ready" from single-flight in the verb layer: add `PlanNotReadyException` + `PlanFailedException` to `src/Pdp.ControlPlane.Verbs/VerbExceptions.cs`; in `src/Pdp.ControlPlane.Verbs/Handlers/SpokeVerbs.cs` + `FabricVerbs.cs`, in the confirm branch (env Provisioning/Destroying, latest run is a Plan), throw `PlanNotReadyException` when the plan run is still in-flight and `PlanFailedException` when it failed — instead of `OperationInProgressException`. `OperationInProgressException` remains **only** for a genuine concurrent mutating operation; the single-flight invariant is unchanged. (CLI already polls to terminal before applying, so it won't hit these; ensure its exception→exit mapping in `src/Pdp.Cli/` does not crash on the new types.)
+- [ ] T067 [US2] Split token consumption in `src/Pdp.Mcp/Confirm/IConfirmationTokens.cs` + `ConfirmationTokenService.cs`: a **check** that validates `{operation, target, expiry}` **without removing** the token, and an explicit **consume** that removes it; widen the TTL constant from ~5 min to **~15 min**. (Mismatch/expiry still throw and never consume — preserves the existing behavior.)
+- [ ] T068 [US2] Wire on-demand reconcile into the MCP status reads in `src/Pdp.Mcp/Tools/RunTools.cs` (inject `IRunTracker`): `ShowEnvironment` and `RunStatus` resolve the target `env_id` (for `RunStatus`, via the run's env) and call `ReconcileEnvironmentAsync` **before** delegating to `IRunVerbs`; `RunHistory` and the non-status reads do **not** reconcile (contract invariant). Orchestration only — no domain logic.
+- [ ] T069 [US2] Update the mutate/destroy tools in `src/Pdp.Mcp/Tools/SpokeTools.cs` + `FabricTools.cs`: call `tokens.Check(...)` (no consume) → invoke the verb → `tokens.Consume(...)` **only on a successful gated dispatch**; map `PlanNotReadyException`/`PlanFailedException` to clear, retryable `McpException` messages ("plan hasn't finished yet — check its status with ShowEnvironment/RunStatus and retry" / "the plan failed; nothing to apply"); the token is **not** consumed on those paths. `Plan*` tools stay pure dispatch-and-return.
+- [ ] T070 [US2] Update tool `[Description]`s in `SpokeTools`/`FabricTools` to state the **plan → check status (ShowEnvironment/RunStatus) → apply** sequence explicitly (so the agent reviews the real plan and never skips straight from plan to apply), and that `Apply*`/`Destroy*` return "plan not ready" until the plan run has succeeded — surfacing the async contract to the model.
+- [ ] T071 [US2] Run `dotnet build` (0 warn/0 err), `dotnet test` (Pdp.Mcp.Tests + Pdp.ControlPlane.Verbs.Tests green incl. T062–T064), `dotnet format` clean. Confirm no prohibited deps introduced and the verb-layer single-flight tests (spec-006) still pass unchanged.
+- [ ] T072 [US2] Update the design-artifact cross-references already amended (`spec.md` FR-018/019/020 + SC-012, `contracts/mcp-tool-surface.md`, `research.md` §12/§13, `data-model.md` §5) are reflected in code comments/READMEs where the old "~5-min TTL / removed on first validation / no in-tool polling" wording appears (`src/Pdp.Mcp/README.md`, XML docs on the tools + token service); no stale contradiction remains. Live verification rides on **T040/T041**.
+
+**Checkpoint**: the owner can plan→review→apply (and destroy) a spoke/fabric through chat with no blocking tool call, the real plan surfaced for review, a clear "plan not ready" instead of a spurious single-flight rejection, and a token that survives a premature apply — the live plan→apply defect is closed (T040/T041).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies
@@ -203,6 +239,7 @@ that nothing spec-7 remains and the ledger RG is intact.
 - **US4 (Phase 6)**: depends on US1 (Log Analytics) and the running `api`/`mcp` apps.
 - **US5 (Phase 7)**: depends on the host stack existing (US1+).
 - **Polish (Phase 8)**: after the desired stories are complete.
+- **Amendment (Phase 9)**: depends on the US2 MCP host (Phase 4) existing — it edits `SpokeTools`/`FabricTools`/`RunTools`/`ConfirmationTokenService` and the shared verb layer + dispatch tracker. Independent of the infra/live phases; its live acceptance folds into T040/T041. Tests (T062–T064) before implementation (T065–T072); T065 (tracker method) before T068 (RunTools wiring); T066 (verb exceptions) before T069 (tool mapping); T067 (token split) before T069.
 
 ### User story dependencies
 
