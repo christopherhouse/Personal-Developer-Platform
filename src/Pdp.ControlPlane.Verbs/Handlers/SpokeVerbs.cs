@@ -97,8 +97,9 @@ public sealed class SpokeVerbs(
                 return await ConfirmCreateAsync(existing, confirmation, cancellationToken).ConfigureAwait(false);
             }
 
-            // A run is genuinely in flight (plan or apply still running) — single-flight reject (FR-022a).
-            throw new OperationInProgressException(existing.EnvId, existing.Status);
+            // The plan hasn't succeeded yet: distinguish "plan still running" / "plan failed" from a genuine
+            // concurrent mutation (FR-019) — the apply is a pure read+dispatch and never blocks/reconciles.
+            throw PlanGate.RejectionFor(existing.EnvId, existing.Status, latest);
         }
 
         // Direct one-shot vend (no prior plan): validate → allocate → dispatch mode=apply → track.
@@ -180,7 +181,8 @@ public sealed class SpokeVerbs(
                 return await ConfirmDestroyAsync(env, regionView.RegionIndex, cancellationToken).ConfigureAwait(false);
             }
 
-            throw new OperationInProgressException(env.EnvId, env.Status);
+            // Destroy plan not yet succeeded → "plan not ready"/"plan failed" vs single-flight (FR-019).
+            throw PlanGate.RejectionFor(env.EnvId, env.Status, latest);
         }
 
         if (env.Status is EnvironmentStatus.Requested or EnvironmentStatus.Provisioning)

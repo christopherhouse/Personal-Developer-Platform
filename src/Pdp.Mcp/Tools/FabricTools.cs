@@ -26,8 +26,10 @@ public sealed class FabricTools(
     IOptions<McpAuthOptions> auth) : OwnerTool(auth)
 {
     [McpServerTool, Description(
-        "Plan a regional fabric create: returns the plan and a single-use confirmation token. " +
-        "Creates NOTHING. Call ApplyFabricCreate with the returned token and the same region to proceed.")]
+        "Plan a regional fabric create: dispatches the plan run and returns IMMEDIATELY with a single-use " +
+        "confirmation token and the env_id. Creates NOTHING and does not wait for the plan. NEXT: poll " +
+        "ShowEnvironment or RunStatus until the plan run reports Succeeded and review it, THEN call " +
+        "ApplyFabricCreate with the returned token and the same region.")]
     public async Task<McpPlanResult> PlanFabricCreate(
         [Description("Azure region to stand the fabric up in, e.g. westus3.")] string region,
         [Description("The region's /16 index (2nd octet; 1-255). The only address knob.")] int regionIndex,
@@ -43,8 +45,9 @@ public sealed class FabricTools(
 
     [McpServerTool, Description(
         "Apply a previously planned fabric create. Requires the confirmation token from PlanFabricCreate " +
-        "and the exact same region; rejected if the token is missing, expired, used, or the region does not " +
-        "match. Dispatches the vend and returns the tracked run handle.")]
+        "and the exact same region. If the plan run has not finished yet you get a clear 'plan not ready' " +
+        "message — check ShowEnvironment/RunStatus and retry; your token is preserved. Once the plan has " +
+        "succeeded, dispatches the vend and returns the tracked run handle.")]
     public async Task<VerbResult> ApplyFabricCreate(
         [Description("The confirmation token returned by PlanFabricCreate.")] string confirmationToken,
         [Description("Region — must match the token's target verbatim.")] string region,
@@ -53,9 +56,12 @@ public sealed class FabricTools(
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        tokens.Validate(confirmationToken, ConfirmationOperation.FabricCreate, region);
-        return await fabric.CreateAsync(new FabricCreateRequest(region, regionIndex), Confirmation.ForApply(), cancellationToken)
+        tokens.Check(confirmationToken, ConfirmationOperation.FabricCreate, region);
+        var result = await InvokeGatedAsync(() =>
+                fabric.CreateAsync(new FabricCreateRequest(region, regionIndex), Confirmation.ForApply(), cancellationToken))
             .ConfigureAwait(false);
+        tokens.Consume(confirmationToken); // consumed ONLY now that the apply actually dispatched
+        return result;
     }
 
     [McpServerTool, Description(
@@ -84,9 +90,12 @@ public sealed class FabricTools(
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        tokens.Validate(confirmationToken, ConfirmationOperation.FabricDestroy, region);
+        tokens.Check(confirmationToken, ConfirmationOperation.FabricDestroy, region);
         var target = EnvRef.ByNaturalKey(EnvironmentKind.Fabric, controlPlane.PlatformSubscriptionId, region);
-        return await fabric.DestroyAsync(target, Confirmation.ForDestroy(region), cancellationToken)
+        var result = await InvokeGatedAsync(() =>
+                fabric.DestroyAsync(target, Confirmation.ForDestroy(region), cancellationToken))
             .ConfigureAwait(false);
+        tokens.Consume(confirmationToken); // consumed ONLY now that the destroy actually dispatched
+        return result;
     }
 }

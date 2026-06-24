@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using NSubstitute;
 using Pdp.ControlPlane.Dispatch;
 using Pdp.ControlPlane.Ipam;
+using Pdp.ControlPlane.Registry;
 using Pdp.ControlPlane.Registry.Entities;
 using Pdp.ControlPlane.TestSupport;
 using Pdp.ControlPlane.Verbs.Handlers;
@@ -137,6 +138,40 @@ public sealed class PlanConfirmTests(ControlPlanePostgresFixture fixture) : IAsy
             var runs = await registry.ProvisioningRuns.Where(r => r.EnvId == envId).ToListAsync();
             runs.Select(r => r.Phase).ShouldBe(new[] { RunPhase.Plan, RunPhase.Apply }, ignoreOrder: true);
         }
+    }
+
+    [Fact]
+    public async Task Apply_before_the_plan_run_finishes_is_rejected_as_PlanNotReady_not_single_flight()
+    {
+        var request = new SpokeCreateRequest(Subscription, "westus3", "app2", Size: 24);
+
+        Guid envId;
+        using (var scope = _host.Services.CreateScope())
+        {
+            var ledger = scope.ServiceProvider.GetRequiredService<IIpamLedger>();
+            var verbs = scope.ServiceProvider.GetRequiredService<ISpokeVerbs>();
+            await ledger.RegisterRegionAsync("westus3", 2);
+            var plan = await verbs.PlanCreateAsync(request);
+            envId = plan.EnvId;
+        }
+
+        // The plan run is dispatched but NOT yet reconciled to Succeeded (no status read happened).
+        await WaitForDispatchAsync(envId, RunPhase.Plan);
+
+        // Applying now must fail with the distinct "plan not ready" error (FR-019) — a subclass of
+        // OperationInProgressException, but specifically PlanNotReadyException, never a bare single-flight.
+        using (var scope = _host.Services.CreateScope())
+        {
+            var verbs = scope.ServiceProvider.GetRequiredService<ISpokeVerbs>();
+            var ex = await Should.ThrowAsync<PlanNotReadyException>(
+                () => verbs.CreateAsync(request, Confirmation.ForApply()));
+            ex.ShouldBeOfType<PlanNotReadyException>();
+        }
+
+        // No apply was dispatched — the gate held.
+        await _dispatcher.DidNotReceive().DispatchAsync(
+            Arg.Is<WorkflowDispatch>(d => d.EnvId == envId && d.Mode == RunPhase.Apply),
+            Arg.Any<CancellationToken>());
     }
 
     private void StubRunsList(string runName, long runId)

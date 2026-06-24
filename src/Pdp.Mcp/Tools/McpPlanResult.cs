@@ -8,7 +8,7 @@ namespace Pdp.Mcp.Tools;
 /// the single-use <see cref="ConfirmationToken"/> and the <see cref="TargetName"/> that the paired
 /// <c>Apply*</c>/<c>Destroy*</c> tool must restate verbatim. Immutable; <c>System.Text.Json</c> serializable.
 /// </summary>
-/// <param name="ConfirmationToken">The opaque, single-use, ~5-minute token binding the operation + target.</param>
+/// <param name="ConfirmationToken">The opaque, single-use, ~15-minute token binding the operation + target.</param>
 /// <param name="TargetName">The exact name the confirming call must restate (spoke name or region).</param>
 /// <param name="Plan">The verb-layer plan result (env_id, proposed inputs, captured plan/run link).</param>
 public sealed record McpPlanResult(
