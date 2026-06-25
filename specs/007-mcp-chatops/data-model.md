@@ -78,7 +78,7 @@ ops are split into a **Plan** tool and an **Apply/Destroy** tool (Article VIII, 
 | `PlanFabricCreate` / `ApplyFabricCreate` | `IFabricVerbs.Plan/Apply Create` | mutate (plan→confirm) |
 | `PlanFabricDestroy` / `DestroyFabric` | `IFabricVerbs.Plan/Apply Destroy` | **destroy** (token + restate target) |
 | `QueryIpam` | `IIpamVerbs.Query` | read |
-| `WhatsDeployed` / `ListEnvironments` | `IInventoryVerbs.*` (ARG) | read (division of truth) |
+| `WhatsDeployed` / `ListWorkloadEnvironments` | `IInventoryVerbs.*` (ARG) | read (division of truth) |
 | `ShowEnvironment` / `RunHistory` / `RunStatus` | `IRunVerbs.* / registry reads` | read (intent/audit) |
 
 Tool descriptions state the confirmation requirement; identity is read only from the validated JWT

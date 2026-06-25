@@ -32,10 +32,11 @@ public sealed class SpokeTools(ISpokeVerbs spoke, IConfirmationTokens tokens)
 
 ## Tools (1:1 with verbs — data-model §4)
 
-**Read** (execute and return): `QueryIpam`, `WhatsDeployed`/`ListEnvironments` (ARG inventory — division
-of truth), `ShowEnvironment`, `RunHistory`, `RunStatus`. The **status-check reads** `ShowEnvironment` and
-`RunStatus` additionally **reconcile the run on demand** before reading (see the gate below); the others
-do not.
+**Read** (execute and return): `QueryIpam`, `WhatsDeployed`/`ListWorkloadEnvironments` (ARG inventory —
+division of truth; `ListWorkloadEnvironments` = workloads grouped by `pdp-env`, **not** vended
+spokes/fabrics — those are control-plane managed units surfaced by `ShowEnvironment`), `ShowEnvironment`,
+`RunHistory`, `RunStatus`. The **status-check reads** `ShowEnvironment` and `RunStatus` additionally
+**reconcile the run on demand** before reading (see the gate below); the others do not.
 
 **Mutate** (two-tool plan→confirm): `PlanSpokeVend`→`ApplySpokeVend`, `PlanFabricCreate`→`ApplyFabricCreate`.
 

@@ -30,9 +30,11 @@ namespace Pdp.Mcp.Tools;
 public sealed class RunTools(IRunVerbs runs, IRunTracker tracker, IOptions<McpAuthOptions> auth) : OwnerTool(auth)
 {
     [McpServerTool, Description(
-        "Show one environment's RECORDED INTENT and lifecycle status from the registry (what was asked for, " +
-        "not what is currently deployed). The environment is referenced by env_id (UUID) or by " +
-        "kind:subscription:name (e.g. spoke:<sub>:app5). Returns null if no such environment is recorded.")]
+        "Show one control-plane managed unit's RECORDED INTENT and lifecycle status from the registry — a " +
+        "vended fabric or spoke addressed by env_id (UUID) or kind:subscription:name (e.g. spoke:<sub>:app5). " +
+        "This is recorded intent (what was asked for), NOT what is currently deployed, and NOT a workload " +
+        "environment (see ListWorkloadEnvironments). Also reconciles the run on demand. Returns null if no " +
+        "such managed unit is recorded.")]
     public async Task<EnvironmentRecord?> ShowEnvironment(
         [Description("Environment ref: an env_id (UUID) or kind:subscription:name (e.g. spoke:<sub>:app5).")] string environment,
         ClaimsPrincipal? caller,
