@@ -1,0 +1,79 @@
+name: controlplane-host-deploy
+
+# Rolls the control-plane-host container apps (api / ingress / mcp) onto a freshly-built image by running
+# `tofu apply` with image_tag = the commit SHA the images workflow just pushed.
+#
+# WHY THIS EXISTS: the container apps reference `<acr>/<repo>:${var.image_tag}` and image_tag defaults to
+# `latest`. Pushing a new `:latest` does NOT change the tofu template, so `tofu apply` is a no-op for the
+# image → no new ACA revision → the apps keep running the OLD image. Deploying by the immutable commit SHA
+# changes the image string, so tofu rolls a new revision and ACA pulls the fresh image.
+#
+# ORDERING IS INHERENT: this is chained off `controlplane-host-images` via `workflow_run`, so it only runs
+# AFTER a successful image build and deploys exactly that build's SHA — no manual "is the image pushed yet?"
+# juggling. It also closes the gap where app-code-only merges (src/**) build images but never reach the
+# cluster (iac-apply only triggers on infra/** changes).
+#
+# Constitutional: OpenTofu dispatched in CI under OIDC, no `az` mutation, no stored cloud secret (Article I).
+on:
+  workflow_run:
+    workflows: [controlplane-host-images]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: tofu-control-plane-host # shared with iac-apply's apply-host + controlplane-host-destroy
+  cancel-in-progress: false
+
+jobs:
+  deploy-host:
+    # Only roll when the image build SUCCEEDED on main. A failed/cancelled build — or a build on any other
+    # branch — must never deploy.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/control-plane-host
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Deploy the exact image the build just pushed (the images workflow tags `:<full-sha>`). A new SHA
+      # changes the container-app image string → tofu rolls a new revision → ACA pulls the fresh image.
+      TF_VAR_image_tag: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      # Check out the SAME commit that built the image, so the IaC applied matches the deployed code.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: tofu init
+        run: tofu init -input=false
+
+      - name: tofu plan
+        run: tofu plan -input=false -no-color -out=tfplan | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: tofu apply
+        run: tofu apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: |
+          echo "Deployed control-plane-host at image_tag=${{ github.event.workflow_run.head_sha }} (from images run ${{ github.event.workflow_run.id }}, event: ${{ github.event_name }})." >> "$GITHUB_STEP_SUMMARY"
