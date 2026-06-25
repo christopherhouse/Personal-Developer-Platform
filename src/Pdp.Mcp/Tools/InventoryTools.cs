@@ -20,8 +20,10 @@ public sealed class InventoryTools(IInventoryVerbs inventory, IOptions<McpAuthOp
 {
     [McpServerTool, Description(
         "What's actually deployed? The full live inventory snapshot from Azure Resource Graph — every managed " +
-        "resource group classified and grouped (fabrics, platform, spokes, workloads) with drift findings and " +
-        "subscription coverage. This is deployed truth (ARG), not recorded intent.")]
+        "resource group classified into fabrics, platform, spokes, and workloads, with drift findings and " +
+        "subscription coverage. This is DEPLOYED TRUTH (ARG), not recorded intent. Use this to see deployed " +
+        "fabrics/spokes/platform; the 'workloads' and 'environments' groups stay empty until workloads exist " +
+        "(spec 008).")]
     public async Task<InventorySnapshot> WhatsDeployed(
         ClaimsPrincipal? caller,
         CancellationToken cancellationToken = default)
@@ -31,9 +33,11 @@ public sealed class InventoryTools(IInventoryVerbs inventory, IOptions<McpAuthOp
     }
 
     [McpServerTool, Description(
-        "List the deployed environments (workloads grouped by their pdp-env tag), from Azure Resource Graph. " +
-        "Deployed truth (ARG), not recorded intent.")]
-    public async Task<IReadOnlyList<EnvironmentView>> ListEnvironments(
+        "List WORKLOAD ENVIRONMENTS — deployed workloads grouped by their pdp-env tag (e.g. dev, demo), from " +
+        "Azure Resource Graph. This is NOT the list of vended spokes/fabrics: those are control-plane managed " +
+        "units addressed by env_id — use ShowEnvironment / RunHistory for them. Empty until workloads are " +
+        "deployed (spec 008). Deployed truth (ARG), not recorded intent.")]
+    public async Task<IReadOnlyList<EnvironmentView>> ListWorkloadEnvironments(
         ClaimsPrincipal? caller,
         CancellationToken cancellationToken = default)
     {

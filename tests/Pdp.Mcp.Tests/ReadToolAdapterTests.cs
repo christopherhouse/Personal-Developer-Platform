@@ -92,13 +92,13 @@ public sealed class ReadToolAdapterTests
     }
 
     [Fact]
-    public async Task ListEnvironments_calls_the_inventory_environments_verb_once_over_ARG()
+    public async Task ListWorkloadEnvironments_calls_the_inventory_environments_verb_once_over_ARG()
     {
         var inventory = Substitute.For<IInventoryVerbs>();
         inventory.GetEnvironmentsAsync(Arg.Any<CancellationToken>()).Returns([]);
         var tools = new InventoryTools(inventory, Auth);
 
-        await tools.ListEnvironments(Owner);
+        await tools.ListWorkloadEnvironments(Owner);
 
         await inventory.Received(1).GetEnvironmentsAsync(Arg.Any<CancellationToken>());
     }
@@ -223,7 +223,7 @@ public sealed class ReadToolAdapterTests
 
         await Should.ThrowAsync<McpException>(() => new IpamTools(ipam, Auth).QueryIpam(someoneElse));
         await Should.ThrowAsync<McpException>(() => new InventoryTools(inventory, Auth).WhatsDeployed(someoneElse));
-        await Should.ThrowAsync<McpException>(() => new InventoryTools(inventory, Auth).ListEnvironments(someoneElse));
+        await Should.ThrowAsync<McpException>(() => new InventoryTools(inventory, Auth).ListWorkloadEnvironments(someoneElse));
         await Should.ThrowAsync<McpException>(() => new RunTools(runs, Substitute.For<IRunTracker>(), Auth).ShowEnvironment($"spoke:{Subscription}:app5", someoneElse));
 
         await ipam.DidNotReceive().QueryAllAsync(Arg.Any<CancellationToken>());
