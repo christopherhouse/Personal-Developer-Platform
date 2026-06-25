@@ -29,27 +29,34 @@ public enum ConfirmationOperation
 /// confirmation (FR-012/FR-013, SC-002).
 /// </summary>
 /// <remarks>
-/// Check and Consume are split (clarify 2026-06-24) so a premature apply — one whose plan has not yet
-/// succeeded — does <b>not</b> burn the token: the verb rejects with "plan not ready" between Check and
+/// Redeem and Consume are split (clarify 2026-06-24) so a premature apply — one whose plan has not yet
+/// succeeded — does <b>not</b> burn the token: the verb rejects with "plan not ready" between Redeem and
 /// Consume, leaving the token redeemable once the plan finishes. The token is issued at plan <i>dispatch</i>,
 /// so its ~15-minute window covers the plan run's queue + execution + the owner's review.
+///
+/// <para>The token also carries the <b>planned payload</b> (the request/target the <c>Plan*</c> call already
+/// captured), so <c>Apply*</c>/<c>Destroy*</c> needs only the token + the verbatim target name — the
+/// incidental inputs (subscription, region, size) come from the token, and the apply uses exactly what was
+/// planned (clarify 2026-06-25).</para>
 /// </remarks>
 public interface IConfirmationTokens
 {
     /// <summary>
     /// Issues a fresh single-use token for <paramref name="operation"/> on <paramref name="targetName"/>,
-    /// expiring ~15 minutes from now. The returned value is opaque and unguessable.
+    /// stashing <paramref name="payload"/> (the planned request / target ref) for the redeeming
+    /// <c>Apply*</c>/<c>Destroy*</c>. Expires ~15 minutes from now; the returned value is opaque and
+    /// unguessable.
     /// </summary>
-    string Issue(ConfirmationOperation operation, string targetName);
+    string Issue(ConfirmationOperation operation, string targetName, object payload);
 
     /// <summary>
-    /// Validates <paramref name="token"/> <b>without consuming it</b>, throwing
-    /// <see cref="ModelContextProtocol.McpException"/> unless it is present, unexpired, matches
-    /// <paramref name="operation"/>, and restates <paramref name="targetName"/> verbatim. An expired token is
-    /// removed; a mismatch leaves it intact so an accidental typo does not burn a valid confirmation. Because
-    /// it does not remove the token, a rejected gated mutation (e.g. "plan not ready") leaves it redeemable.
+    /// Validates <paramref name="token"/> <b>without consuming it</b> and returns the stashed payload typed
+    /// as <typeparamref name="T"/>. Throws <see cref="ModelContextProtocol.McpException"/> unless the token is
+    /// present, unexpired, matches <paramref name="operation"/>, and restates <paramref name="targetName"/>
+    /// verbatim. An expired token is removed; a mismatch leaves it intact so a typo does not burn a valid
+    /// confirmation. Not consuming means a rejected gated mutation (e.g. "plan not ready") stays redeemable.
     /// </summary>
-    void Check(string token, ConfirmationOperation operation, string targetName);
+    T Redeem<T>(string token, ConfirmationOperation operation, string targetName);
 
     /// <summary>
     /// Removes <paramref name="token"/> (single-use) — called <b>only after a gated mutation has actually

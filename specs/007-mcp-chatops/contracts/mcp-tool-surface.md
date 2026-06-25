@@ -58,13 +58,17 @@ status-read tools advance run state.
    **only** in these status reads; the always-on Api node's reconciler/webhook is a background safety net,
    not a dependency of the chat flow.
 3. `confirmationToken` is opaque, single-use, **~15-min TTL** (issued at plan dispatch, so the window
-   covers plan queue + run + human review — clarify 2026-06-24), binds `{operation, targetName}`.
-4. `Apply<Op>` / `Destroy<Op>` requires `confirmationToken` **and** a `target`/name param. It is a **pure
-   registry read + dispatch** — it does **not** reconcile or poll. It dispatches the gated mutation **only
-   when the plan run is recorded `Succeeded`** (which a prior status read recorded — that read is the
-   Article VIII review), and returns the tracked run handle immediately. Rejected (`McpException`) unless:
-   token valid + unused + unexpired, operation matches, and `target` == the token's `targetName`
-   **verbatim**.
+   covers plan queue + run + human review — clarify 2026-06-24), binds `{operation, targetName}`, and
+   **carries the planned payload** — the request / target ref the `Plan<Op>` call already captured
+   (clarify 2026-06-25).
+4. `Apply<Op>` / `Destroy<Op>` requires **only** the `confirmationToken` **and** the verbatim `target`/name
+   — that name restatement is the Article VIII gesture (FR-013); **everything else (subscription, region,
+   size, …) flows from the token's stashed payload**, so the apply uses *exactly* what was planned and the
+   owner never re-types incidental inputs. It is a **pure registry read + dispatch** — it does **not**
+   reconcile or poll — and dispatches the gated mutation **only when the plan run is recorded `Succeeded`**
+   (which a prior status read recorded — that read is the Article VIII review), returning the tracked run
+   handle immediately. Rejected (`McpException`) unless: token valid + unused + unexpired, operation
+   matches, and `target` == the token's `targetName` **verbatim**.
 5. If the plan run has **not succeeded**, `Apply`/`Destroy` returns a **distinct, retryable** response —
    *"plan hasn't finished yet — check its status and retry"* (in flight) or *"the plan failed; nothing to
    apply"* (failed) — **kept separate** from the single-flight rejection (a real concurrent mutating
