@@ -184,6 +184,67 @@ public sealed class ToolVerbAdapterTests
             Arg.Any<CancellationToken>());
     }
 
+    // --- Maintenance: reset (plan → reset, token + verbatim target) — issue #48 -------------------------
+
+    private static ResetPreview SomeResetPreview(string name) =>
+        new(Guid.CreateVersion7(), EnvironmentKind.Spoke, name, EnvironmentStatus.Provisioning, LatestRun: null, Notes: []);
+
+    [Fact]
+    public async Task ResetEnvironment_validates_the_token_then_calls_ResetAsync_with_the_restated_target()
+    {
+        var maintenance = Substitute.For<IEnvironmentMaintenanceVerbs>();
+        maintenance.PlanResetAsync(Arg.Any<EnvRef>(), Arg.Any<CancellationToken>()).Returns(SomeResetPreview("app5"));
+        maintenance.ResetAsync(Arg.Any<EnvRef>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>())
+            .Returns(SomeResult(EnvironmentStatus.Failed));
+        var tools = new MaintenanceTools(maintenance, new ConfirmationTokenService(), Auth);
+
+        var planned = await tools.PlanResetEnvironment($"spoke:{Subscription}:app5", Owner);
+        var reset = await tools.ResetEnvironment(planned.ConfirmationToken, "app5", Owner);
+
+        planned.TargetName.ShouldBe("app5");
+        reset.Status.ShouldBe(EnvironmentStatus.Failed);
+        await maintenance.Received(1).ResetAsync(
+            Arg.Is<EnvRef>(e => e.Kind == EnvironmentKind.Spoke && e.Subscription == Subscription && e.Name == "app5"),
+            Arg.Is<Confirmation>(c => c.IsConfirmed && c.RestatedTarget == "app5"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResetEnvironment_with_a_wrong_name_is_rejected_and_never_calls_the_verb()
+    {
+        var maintenance = Substitute.For<IEnvironmentMaintenanceVerbs>();
+        maintenance.PlanResetAsync(Arg.Any<EnvRef>(), Arg.Any<CancellationToken>()).Returns(SomeResetPreview("app5"));
+        var tools = new MaintenanceTools(maintenance, new ConfirmationTokenService(), Auth);
+
+        var planned = await tools.PlanResetEnvironment($"spoke:{Subscription}:app5", Owner);
+
+        await Should.ThrowAsync<McpException>(() =>
+            tools.ResetEnvironment(planned.ConfirmationToken, "app6", Owner));
+        await maintenance.DidNotReceive().ResetAsync(Arg.Any<EnvRef>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResetEnvironment_without_a_valid_token_never_calls_the_verb()
+    {
+        var maintenance = Substitute.For<IEnvironmentMaintenanceVerbs>();
+        var tools = new MaintenanceTools(maintenance, new ConfirmationTokenService(), Auth);
+
+        await Should.ThrowAsync<McpException>(() =>
+            tools.ResetEnvironment("forged-token", "app5", Owner));
+        await maintenance.DidNotReceive().ResetAsync(Arg.Any<EnvRef>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_non_owner_caller_is_refused_from_planning_a_reset()
+    {
+        var maintenance = Substitute.For<IEnvironmentMaintenanceVerbs>();
+        var tools = new MaintenanceTools(maintenance, new ConfirmationTokenService(), Auth);
+
+        await Should.ThrowAsync<McpException>(() =>
+            tools.PlanResetEnvironment($"spoke:{Subscription}:app5", Caller("someone-else")));
+        await maintenance.DidNotReceive().PlanResetAsync(Arg.Any<EnvRef>(), Arg.Any<CancellationToken>());
+    }
+
     // --- Owner gate (defense in depth) ------------------------------------------------------------------
 
     [Fact]

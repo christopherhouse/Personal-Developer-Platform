@@ -91,6 +91,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIpamVerbs, IpamVerbs>();
         services.AddScoped<IInventoryVerbs, InventoryVerbs>();
         services.AddScoped<IRunVerbs, RunVerbs>();
+        services.AddScoped<IEnvironmentMaintenanceVerbs, EnvironmentMaintenanceVerbs>();
         services.AddSingleton<IValidator<SpokeCreateRequest>, SpokeCreateRequestValidator>();
         services.AddSingleton<IValidator<FabricCreateRequest>, FabricCreateRequestValidator>();
 
