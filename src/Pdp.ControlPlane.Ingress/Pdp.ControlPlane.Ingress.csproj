@@ -5,9 +5,11 @@
 
   <!-- Ingress: the ONE public surface (constitution Article IX). A pure YARP reverse proxy that
        forwards POST /webhooks/github to the internal Api — no business logic. No project references
-       (T010). -->
+       (T010) — the Azure Monitor OTel distro is a package, not a reference to the verb layer, so the
+       edge app stays dependency-free while still emitting the trace root for true e2e correlation. -->
   <ItemGroup>
     <PackageReference Include="Yarp.ReverseProxy" />
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
   </ItemGroup>
 
 </Project>

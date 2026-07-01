@@ -441,6 +441,13 @@ module "container_app_ingress" {
       env = [
         { name = "ReverseProxy__Clusters__control-plane-api__Destinations__api__Address", value = "${module.container_app_api.fqdn_url}/" },
         { name = "ReverseProxy__Clusters__control-plane-mcp__Destinations__mcp__Address", value = "${module.container_app_mcp.fqdn_url}/" },
+        # True e2e tracing: the edge is instrumented so the inbound request is the TRACE ROOT and YARP
+        # propagates `traceparent` to the internal api/mcp (which already export to this same App Insights).
+        # Same Azure-generated ingestion credential as api/mcp — a plain env, not a state-secret (SC-007).
+        # Empty/unset is a graceful no-op in Program.cs (mirrors api/mcp). OTEL_SERVICE_NAME names this node
+        # in the application map so the edge is distinct from pdp-api/pdp-mcp.
+        { name = "APPLICATIONINSIGHTS_CONNECTION_STRING", value = data.azurerm_application_insights.platform.connection_string },
+        { name = "OTEL_SERVICE_NAME", value = "pdp-ingress" },
       ]
     }]
   }
