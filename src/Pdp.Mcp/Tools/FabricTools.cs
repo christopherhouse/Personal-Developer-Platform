@@ -37,28 +37,30 @@ public sealed class FabricTools(
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        var plan = await fabric.PlanCreateAsync(new FabricCreateRequest(region, regionIndex), cancellationToken)
-            .ConfigureAwait(false);
-        var token = tokens.Issue(ConfirmationOperation.FabricCreate, region);
+        var request = new FabricCreateRequest(region, regionIndex);
+        var plan = await fabric.PlanCreateAsync(request, cancellationToken).ConfigureAwait(false);
+        // Stash the planned request so ApplyFabricCreate needs only the token + the verbatim region.
+        var token = tokens.Issue(ConfirmationOperation.FabricCreate, region, request);
         return new McpPlanResult(token, region, plan);
     }
 
     [McpServerTool, Description(
-        "Apply a previously planned fabric create. Requires the confirmation token from PlanFabricCreate " +
-        "and the exact same region. If the plan run has not finished yet you get a clear 'plan not ready' " +
-        "message — check ShowEnvironment/RunStatus and retry; your token is preserved. Once the plan has " +
-        "succeeded, dispatches the vend and returns the tracked run handle.")]
+        "Apply a previously planned fabric create. Requires ONLY the confirmation token from PlanFabricCreate " +
+        "and the exact same region restated verbatim — the /16 index comes from the plan (via the token), so " +
+        "the apply uses exactly what you reviewed. If the plan run has not finished yet you get a clear 'plan " +
+        "not ready' message — check ShowEnvironment/RunStatus and retry; your token is preserved. Once the " +
+        "plan has succeeded, dispatches the vend and returns the tracked run handle.")]
     public async Task<VerbResult> ApplyFabricCreate(
         [Description("The confirmation token returned by PlanFabricCreate.")] string confirmationToken,
-        [Description("Region — must match the token's target verbatim.")] string region,
-        [Description("The region's /16 index — must match the planned create.")] int regionIndex,
+        [Description("Region — must match the token's target verbatim (the Article VIII restatement).")] string region,
         ClaimsPrincipal? caller,
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        tokens.Check(confirmationToken, ConfirmationOperation.FabricCreate, region);
+        // The token carries the exact planned request (region + index) — no need to re-enter the index.
+        var request = tokens.Redeem<FabricCreateRequest>(confirmationToken, ConfirmationOperation.FabricCreate, region);
         var result = await InvokeGatedAsync(() =>
-                fabric.CreateAsync(new FabricCreateRequest(region, regionIndex), Confirmation.ForApply(), cancellationToken))
+                fabric.CreateAsync(request, Confirmation.ForApply(), cancellationToken))
             .ConfigureAwait(false);
         tokens.Consume(confirmationToken); // consumed ONLY now that the apply actually dispatched
         return result;
@@ -75,23 +77,24 @@ public sealed class FabricTools(
         EnsureOwner(caller);
         var target = EnvRef.ByNaturalKey(EnvironmentKind.Fabric, controlPlane.PlatformSubscriptionId, region);
         var plan = await fabric.PlanDestroyAsync(target, cancellationToken).ConfigureAwait(false);
-        var token = tokens.Issue(ConfirmationOperation.FabricDestroy, region);
+        // Stash the resolved target so DestroyFabric needs only the token + the verbatim region.
+        var token = tokens.Issue(ConfirmationOperation.FabricDestroy, region, target);
         return new McpPlanResult(token, region, plan);
     }
 
     [McpServerTool, Description(
-        "DANGER: destroys a regional fabric. Requires the confirmation token from PlanFabricDestroy AND the " +
-        "exact region restated verbatim. Rejected if the token is missing, expired, used, or the region does " +
-        "not match. The region's hub carve-out in the IPAM ledger survives. There is no single-call destroy.")]
+        "DANGER: destroys a regional fabric. Requires ONLY the confirmation token from PlanFabricDestroy AND " +
+        "the exact region restated verbatim. Rejected if the token is missing, expired, used, or the region " +
+        "does not match. The region's hub carve-out in the IPAM ledger survives. There is no single-call destroy.")]
     public async Task<VerbResult> DestroyFabric(
         [Description("The confirmation token returned by PlanFabricDestroy.")] string confirmationToken,
-        [Description("Region of the fabric to destroy — must match the token's target verbatim.")] string region,
+        [Description("Region of the fabric to destroy — must match the token's target verbatim (the Article VIII restatement).")] string region,
         ClaimsPrincipal? caller,
         CancellationToken cancellationToken = default)
     {
         EnsureOwner(caller);
-        tokens.Check(confirmationToken, ConfirmationOperation.FabricDestroy, region);
-        var target = EnvRef.ByNaturalKey(EnvironmentKind.Fabric, controlPlane.PlatformSubscriptionId, region);
+        // The token carries the resolved target (Fabric / platform subscription / region).
+        var target = tokens.Redeem<EnvRef>(confirmationToken, ConfirmationOperation.FabricDestroy, region);
         var result = await InvokeGatedAsync(() =>
                 fabric.DestroyAsync(target, Confirmation.ForDestroy(region), cancellationToken))
             .ConfigureAwait(false);

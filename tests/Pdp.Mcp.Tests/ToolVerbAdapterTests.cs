@@ -67,7 +67,7 @@ public sealed class ToolVerbAdapterTests
         var tools = new SpokeTools(spoke, new ConfirmationTokenService(), Auth);
 
         var planned = await tools.PlanSpokeVend(Subscription, "westus3", "app5", Owner);
-        var applied = await tools.ApplySpokeVend(planned.ConfirmationToken, Subscription, "westus3", "app5", Owner);
+        var applied = await tools.ApplySpokeVend(planned.ConfirmationToken, "app5", Owner);
 
         applied.Status.ShouldBe(EnvironmentStatus.Provisioning);
         await spoke.Received(1).CreateAsync(
@@ -83,7 +83,7 @@ public sealed class ToolVerbAdapterTests
         var tools = new SpokeTools(spoke, new ConfirmationTokenService(), Auth);
 
         await Should.ThrowAsync<McpException>(() =>
-            tools.ApplySpokeVend("forged-token", Subscription, "westus3", "app5", Owner));
+            tools.ApplySpokeVend("forged-token", "app5", Owner));
 
         await spoke.DidNotReceive().CreateAsync(Arg.Any<SpokeCreateRequest>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>());
     }
@@ -103,12 +103,12 @@ public sealed class ToolVerbAdapterTests
             .Returns(Task.FromException<VerbResult>(
                 new PlanNotReadyException(Guid.CreateVersion7(), EnvironmentStatus.Provisioning, RunPhase.Plan)));
         await Should.ThrowAsync<McpException>(() =>
-            tools.ApplySpokeVend(planned.ConfirmationToken, Subscription, "westus3", "app5", Owner));
+            tools.ApplySpokeVend(planned.ConfirmationToken, "app5", Owner));
 
         // Token preserved: once the plan succeeds and the verb dispatches, the SAME token applies cleanly.
         spoke.CreateAsync(Arg.Any<SpokeCreateRequest>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>())
             .Returns(SomeResult(EnvironmentStatus.Provisioning));
-        var applied = await tools.ApplySpokeVend(planned.ConfirmationToken, Subscription, "westus3", "app5", Owner);
+        var applied = await tools.ApplySpokeVend(planned.ConfirmationToken, "app5", Owner);
         applied.Status.ShouldBe(EnvironmentStatus.Provisioning);
     }
 
@@ -124,7 +124,7 @@ public sealed class ToolVerbAdapterTests
         var tools = new SpokeTools(spoke, new ConfirmationTokenService(), Auth);
 
         var planned = await tools.PlanSpokeDestroy(Subscription, "app5", Owner);
-        var destroyed = await tools.DestroySpoke(planned.ConfirmationToken, Subscription, "app5", Owner);
+        var destroyed = await tools.DestroySpoke(planned.ConfirmationToken, "app5", Owner);
 
         destroyed.Status.ShouldBe(EnvironmentStatus.Destroying);
         await spoke.Received(1).DestroyAsync(
@@ -143,7 +143,7 @@ public sealed class ToolVerbAdapterTests
         var planned = await tools.PlanSpokeDestroy(Subscription, "app5", Owner);
 
         await Should.ThrowAsync<McpException>(() =>
-            tools.DestroySpoke(planned.ConfirmationToken, Subscription, "app6", Owner));
+            tools.DestroySpoke(planned.ConfirmationToken, "app6", Owner));
         await spoke.DidNotReceive().DestroyAsync(Arg.Any<EnvRef>(), Arg.Any<Confirmation>(), Arg.Any<CancellationToken>());
     }
 
@@ -159,7 +159,7 @@ public sealed class ToolVerbAdapterTests
         var tools = new FabricTools(fabric, new ConfirmationTokenService(), new ControlPlaneOptions(), Auth);
 
         var planned = await tools.PlanFabricCreate("westus3", 7, Owner);
-        await tools.ApplyFabricCreate(planned.ConfirmationToken, "westus3", 7, Owner);
+        await tools.ApplyFabricCreate(planned.ConfirmationToken, "westus3", Owner);
 
         await fabric.Received(1).PlanCreateAsync(Arg.Is<FabricCreateRequest>(r => r.Region == "westus3" && r.RegionIndex == 7), Arg.Any<CancellationToken>());
         await fabric.Received(1).CreateAsync(Arg.Is<FabricCreateRequest>(r => r.Region == "westus3"), Arg.Is<Confirmation>(c => c.IsConfirmed), Arg.Any<CancellationToken>());

@@ -5,11 +5,11 @@ using Shouldly;
 namespace Pdp.Mcp.Tests;
 
 /// <summary>
-/// T029/T062 — the plan→confirm token contract (Article VIII / FR-013, SC-002; clarify 2026-06-24). A token
-/// binds <c>{operation, targetName}</c>, expires (~15 min), and is <b>single-use but consumed only on a
-/// successful gated dispatch</b>: <see cref="ConfirmationTokenService.Check"/> validates without removing, so
-/// a premature apply ("plan not ready") leaves the token redeemable; <see cref="ConfirmationTokenService.Consume"/>
-/// removes it. The ~15-minute TTL covers the plan run's queue + execution + the owner's review (data-model §5).
+/// T029/T062 — the plan→confirm token contract (Article VIII / FR-013, SC-002; clarify 2026-06-24/25). A
+/// token binds <c>{operation, targetName}</c>, expires (~15 min), carries the planned <b>payload</b> the
+/// redeeming apply/destroy needs, and is <b>single-use but consumed only on a successful gated dispatch</b>:
+/// <see cref="ConfirmationTokenService.Redeem{T}"/> validates without removing (so a premature apply leaves
+/// it redeemable) and returns the payload; <see cref="ConfirmationTokenService.Consume"/> removes it.
 /// </summary>
 public sealed class ConfirmationTokenServiceTests
 {
@@ -22,7 +22,8 @@ public sealed class ConfirmationTokenServiceTests
         public void Advance(TimeSpan by) => _now += by;
     }
 
-    private static readonly DateTimeOffset T0 = new(2026, 6, 24, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset T0 = new(2026, 6, 25, 12, 0, 0, TimeSpan.Zero);
+    private const string Payload = "planned-request";
 
     private static ConfirmationTokenService NewService(out FakeTime clock)
     {
@@ -31,38 +32,38 @@ public sealed class ConfirmationTokenServiceTests
     }
 
     [Fact]
-    public void Check_with_matching_operation_and_target_succeeds()
+    public void Redeem_with_matching_operation_and_target_returns_the_stashed_payload()
     {
         var service = NewService(out _);
-        var token = service.Issue(ConfirmationOperation.SpokeVend, "app5");
+        var token = service.Issue(ConfirmationOperation.SpokeVend, "app5", Payload);
 
-        Should.NotThrow(() => service.Check(token, ConfirmationOperation.SpokeVend, "app5"));
+        service.Redeem<string>(token, ConfirmationOperation.SpokeVend, "app5").ShouldBe(Payload);
     }
 
     [Fact]
-    public void Check_does_not_consume_the_token_so_a_premature_apply_can_retry()
+    public void Redeem_does_not_consume_the_token_so_a_premature_apply_can_retry()
     {
         var service = NewService(out _);
-        var token = service.Issue(ConfirmationOperation.SpokeVend, "app5");
+        var token = service.Issue(ConfirmationOperation.SpokeVend, "app5", Payload);
 
-        // Checking the token repeatedly (e.g. an apply rejected with "plan not ready", then retried) must NOT
+        // Redeeming the token repeatedly (e.g. an apply rejected with "plan not ready", then retried) must NOT
         // burn it — only a successful gated dispatch consumes it (clarify 2026-06-24).
-        Should.NotThrow(() => service.Check(token, ConfirmationOperation.SpokeVend, "app5"));
-        Should.NotThrow(() => service.Check(token, ConfirmationOperation.SpokeVend, "app5"));
-        Should.NotThrow(() => service.Check(token, ConfirmationOperation.SpokeVend, "app5"));
+        Should.NotThrow(() => service.Redeem<string>(token, ConfirmationOperation.SpokeVend, "app5"));
+        Should.NotThrow(() => service.Redeem<string>(token, ConfirmationOperation.SpokeVend, "app5"));
+        service.Redeem<string>(token, ConfirmationOperation.SpokeVend, "app5").ShouldBe(Payload);
     }
 
     [Fact]
     public void Consume_makes_the_token_single_use()
     {
         var service = NewService(out _);
-        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5");
+        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5", Payload);
 
-        service.Check(token, ConfirmationOperation.SpokeDestroy, "app5");
+        service.Redeem<string>(token, ConfirmationOperation.SpokeDestroy, "app5");
         service.Consume(token);
 
         // Once consumed (the gated mutation dispatched), the token is gone — no replay.
-        Should.Throw<McpException>(() => service.Check(token, ConfirmationOperation.SpokeDestroy, "app5"));
+        Should.Throw<McpException>(() => service.Redeem<string>(token, ConfirmationOperation.SpokeDestroy, "app5"));
     }
 
     [Fact]
@@ -74,66 +75,66 @@ public sealed class ConfirmationTokenServiceTests
     }
 
     [Fact]
-    public void Check_rejects_a_target_that_is_not_restated_verbatim()
+    public void Redeem_rejects_a_target_that_is_not_restated_verbatim()
     {
         var service = NewService(out _);
-        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5");
+        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5", Payload);
 
-        Should.Throw<McpException>(() => service.Check(token, ConfirmationOperation.SpokeDestroy, "app6"));
+        Should.Throw<McpException>(() => service.Redeem<string>(token, ConfirmationOperation.SpokeDestroy, "app6"));
     }
 
     [Fact]
-    public void Check_does_not_consume_the_token_on_a_target_mismatch()
+    public void Redeem_does_not_consume_the_token_on_a_target_mismatch()
     {
         var service = NewService(out _);
-        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5");
+        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5", Payload);
 
         // A mistyped target must not burn a valid confirmation — the owner can still redeem it correctly.
-        Should.Throw<McpException>(() => service.Check(token, ConfirmationOperation.SpokeDestroy, "app6"));
-        Should.NotThrow(() => service.Check(token, ConfirmationOperation.SpokeDestroy, "app5"));
+        Should.Throw<McpException>(() => service.Redeem<string>(token, ConfirmationOperation.SpokeDestroy, "app6"));
+        Should.NotThrow(() => service.Redeem<string>(token, ConfirmationOperation.SpokeDestroy, "app5"));
     }
 
     [Fact]
-    public void Check_rejects_an_operation_mismatch()
+    public void Redeem_rejects_an_operation_mismatch()
     {
         var service = NewService(out _);
         // A token minted for a destroy can never release a vend (or vice versa).
-        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5");
+        var token = service.Issue(ConfirmationOperation.SpokeDestroy, "app5", Payload);
 
-        Should.Throw<McpException>(() => service.Check(token, ConfirmationOperation.SpokeVend, "app5"));
+        Should.Throw<McpException>(() => service.Redeem<string>(token, ConfirmationOperation.SpokeVend, "app5"));
     }
 
     [Fact]
-    public void Check_rejects_an_expired_token()
+    public void Redeem_rejects_an_expired_token()
     {
         var service = NewService(out var clock);
-        var token = service.Issue(ConfirmationOperation.FabricCreate, "westus3");
+        var token = service.Issue(ConfirmationOperation.FabricCreate, "westus3", Payload);
 
         clock.Advance(TimeSpan.FromMinutes(15) + TimeSpan.FromSeconds(1));
 
-        Should.Throw<McpException>(() => service.Check(token, ConfirmationOperation.FabricCreate, "westus3"));
+        Should.Throw<McpException>(() => service.Redeem<string>(token, ConfirmationOperation.FabricCreate, "westus3"));
     }
 
     [Fact]
-    public void Check_accepts_a_token_just_before_expiry()
+    public void Redeem_accepts_a_token_just_before_expiry()
     {
         var service = NewService(out var clock);
-        var token = service.Issue(ConfirmationOperation.FabricDestroy, "westus3");
+        var token = service.Issue(ConfirmationOperation.FabricDestroy, "westus3", Payload);
 
         clock.Advance(TimeSpan.FromMinutes(14) + TimeSpan.FromSeconds(59));
 
-        Should.NotThrow(() => service.Check(token, ConfirmationOperation.FabricDestroy, "westus3"));
+        Should.NotThrow(() => service.Redeem<string>(token, ConfirmationOperation.FabricDestroy, "westus3"));
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("not-a-real-token")]
-    public void Check_rejects_a_missing_or_unknown_token(string token)
+    public void Redeem_rejects_a_missing_or_unknown_token(string token)
     {
         var service = NewService(out _);
 
-        Should.Throw<McpException>(() => service.Check(token, ConfirmationOperation.SpokeVend, "app5"));
+        Should.Throw<McpException>(() => service.Redeem<string>(token, ConfirmationOperation.SpokeVend, "app5"));
     }
 
     [Fact]
@@ -141,8 +142,8 @@ public sealed class ConfirmationTokenServiceTests
     {
         var service = NewService(out _);
 
-        var a = service.Issue(ConfirmationOperation.SpokeVend, "app5");
-        var b = service.Issue(ConfirmationOperation.SpokeVend, "app5");
+        var a = service.Issue(ConfirmationOperation.SpokeVend, "app5", Payload);
+        var b = service.Issue(ConfirmationOperation.SpokeVend, "app5", Payload);
 
         a.ShouldNotBe(b);
         a.ShouldNotContain("app5");

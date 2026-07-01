@@ -93,8 +93,10 @@ Tool descriptions state the confirmation requirement; identity is read only from
 | `operation` | enum | e.g. `SpokeDestroy`, `FabricCreate` — bound at issue |
 | `targetName` | string | the env/spoke/fabric name the plan was generated for |
 | `expiresAt` | timestamp | ~15 min TTL (issued at plan **dispatch**, so the window covers plan queue + run + review — clarify 2026-06-24) |
+| `payload` | object | the planned request / target ref the `Plan*` call captured (`SpokeCreateRequest`, `FabricCreateRequest`, or the destroy `EnvRef`). `Apply*`/`Destroy*` redeems this — so it needs only the token + the verbatim target, never the incidental inputs (subscription, region, size); the apply uses *exactly* what was planned (clarify 2026-06-25) |
 | (token value) | signed string / opaque id | single-use; consumed **only** when a gated mutation is dispatched — **preserved** on operation/target mismatch, "plan not ready", or "plan failed" (clarify 2026-06-24) |
 
-`Apply/Destroy` rejects (`McpException`) if the token is missing, expired, already used, the operation
-mismatches, or the supplied `target` ≠ `targetName`. This realizes "a chat request can never destroy
-without an explicit, target-restating confirmation" (FR-013).
+`Apply/Destroy` takes only `{confirmationToken, target}` and rejects (`McpException`) if the token is
+missing, expired, already used, the operation mismatches, or the supplied `target` ≠ `targetName`. The
+verbatim target restatement is the Article VIII gesture; all other inputs come from the token's `payload`.
+This realizes "a chat request can never destroy without an explicit, target-restating confirmation" (FR-013).
