@@ -68,6 +68,33 @@ public sealed class McpAuthTests(ControlPlanePostgresFixture fixture)
     }
 
     [Fact]
+    public async Task The_PRM_document_is_served_when_the_proxy_forwards_the_public_host_and_scheme()
+    {
+        // Regression for #44. Behind the YARP ingress + ACA, TLS terminates at the edge and the internal hop
+        // is plain http to this app's internal FQDN, so Kestrel sees http + an internal host. The SDK's
+        // McpAuthenticationHandler only serves the PRM document when Request.Host/Scheme match the configured
+        // (public) ResourceMetadataUri; without UseForwardedHeaders the mismatch made it bail and the document
+        // 404'd, breaking OAuth discovery. Consuming X-Forwarded-Host/-Proto restores the external Host/Scheme
+        // so the document is served. The path is the ResourceMetadataUri's path (…/oauth-protected-resource/mcp).
+        const string publicUri = "https://ingress.example.com/.well-known/oauth-protected-resource/mcp";
+        using var factory = new McpAuthFactory(fixture.ConnectionString, OwnerOid, publicUri);
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/.well-known/oauth-protected-resource/mcp");
+        request.Headers.Add("X-Forwarded-Host", "ingress.example.com");
+        request.Headers.Add("X-Forwarded-Proto", "https");
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        // RFC 9728 metadata for the (public) resource, not the internal request host. `resource` is the PRM
+        // URL with the /.well-known/oauth-protected-resource prefix stripped (…/oauth-protected-resource/mcp
+        // → …/mcp) — set explicitly because a custom ResourceMetadataUri disables the SDK's derivation.
+        var doc = await response.Content.ReadAsStringAsync();
+        doc.ShouldContain("\"resource\":\"https://ingress.example.com/mcp\"");
+    }
+
+    [Fact]
     public async Task A_non_owner_oid_is_rejected_and_no_tool_runs()
     {
         using var factory = NewFactory();
