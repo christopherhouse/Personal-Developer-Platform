@@ -10,6 +10,7 @@
 using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
+using Microsoft.AspNetCore.HttpOverrides;
 using ModelContextProtocol;
 using Npgsql;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -122,8 +123,27 @@ builder.Services
 // Entra OAuth 2.1 protected-resource auth: JWT validation + PRM publication + the single-owner oid policy.
 builder.Services.AddOwnerAuthorization(builder.Configuration);
 
+// Restore the original client Host/Scheme from the proxy headers BEFORE authentication runs. Behind the
+// YARP ingress + ACA, TLS terminates at the edge and the internal hop is plain http to this app's INTERNAL
+// FQDN, so Kestrel sees Request.Scheme=http and Request.Host=…mcp.internal…. The MCP SDK's
+// McpAuthenticationHandler serves the PRM document only when Request.Host/Scheme match the configured
+// ResourceMetadataUri (the PUBLIC ingress FQDN); the mismatch makes it log ResourceMetadataHostMismatch,
+// bail, and the request 404s (issue #44). YARP forwards X-Forwarded-Host/-Proto/-For by default; consuming
+// them puts Request.Host/Scheme back to the external client values so the handler match — and the whole
+// OAuth discovery flow — succeeds. KnownProxies/KnownIPNetworks are cleared because the ACA-internal proxy
+// hop has no stable, knowable address and the app is not otherwise internet-reachable.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor
+                             | ForwardedHeaders.XForwardedHost
+                             | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseAuthentication();
 app.UseAuthorization();
 

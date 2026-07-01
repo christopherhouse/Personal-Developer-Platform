@@ -60,6 +60,12 @@ public static class OwnerAuthorization
             // Publishes the protected-resource metadata (RFC 9728) advertising the issuer + scope.
             .AddMcp(options =>
             {
+                options.ResourceMetadata = new()
+                {
+                    AuthorizationServers = { authority },
+                    ScopesSupported = ["mcp:tools"],
+                };
+
                 // Behind the YARP ingress + ACA, Request.Scheme/Host are this app's INTERNAL http FQDN, so
                 // the SDK would advertise an internal, externally-unreachable PRM URL in the WWW-Authenticate
                 // challenge and the metadata document. When the host stack supplies the PUBLIC absolute URL
@@ -69,14 +75,25 @@ public static class OwnerAuthorization
                 var publicPrmUri = configuration["Mcp:ResourceMetadataUri"];
                 if (!string.IsNullOrWhiteSpace(publicPrmUri))
                 {
-                    options.ResourceMetadataUri = new Uri(publicPrmUri, UriKind.Absolute);
-                }
+                    var prmUri = new Uri(publicPrmUri, UriKind.Absolute);
+                    options.ResourceMetadataUri = prmUri;
 
-                options.ResourceMetadata = new()
-                {
-                    AuthorizationServers = { authority },
-                    ScopesSupported = ["mcp:tools"],
-                };
+                    // Setting a custom ResourceMetadataUri turns OFF the SDK's request-derivation of the
+                    // RFC 9728 `resource` identifier: on the configured-endpoint path
+                    // McpAuthenticationHandler serves the document with derivedResource=null, so
+                    // ResourceMetadata.Resource stays null and it throws
+                    // ("ResourceMetadata.Resource could not be determined") → HTTP 500. That is the latent
+                    // second half of issue #44 — once UseForwardedHeaders makes Host/Scheme match the
+                    // configured URI (so the handler stops 404ing and actually serves), this null would 500.
+                    // Supply it explicitly: the canonical URL of the protected resource is the PRM URL with
+                    // the well-known prefix stripped — exactly what the SDK derives from the request on the
+                    // default path (…/.well-known/oauth-protected-resource/mcp → …/mcp).
+                    const string wellKnownPrefix = "/.well-known/oauth-protected-resource";
+                    var resourcePath = prmUri.AbsolutePath.StartsWith(wellKnownPrefix, StringComparison.Ordinal)
+                        ? prmUri.AbsolutePath[wellKnownPrefix.Length..]
+                        : prmUri.AbsolutePath;
+                    options.ResourceMetadata.Resource = $"{prmUri.GetLeftPart(UriPartial.Authority)}{resourcePath}";
+                }
             });
 
         services.AddAuthorization(options => options.AddPolicy(PolicyName, policy =>
