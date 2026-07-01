@@ -11,9 +11,10 @@
   it would need a standing Entra-write CI credential, which we avoid). The owner creates it once here.
 
   Steps: create the app (api://pdp-mcp) → v2 access tokens (matches the server's v2.0 ValidIssuer) →
-  service principal → pre-authorize the Azure CLI public client on the auto-created user_impersonation
-  scope so `az account get-access-token --resource api://pdp-mcp` works with no consent prompt. The
-  Graph PATCH reads-modifies-writes the whole `api` object so the exposed scope is preserved.
+  service principal → pre-authorize the Azure CLI public client on the exposed `mcp:tools` scope so
+  `az account get-access-token --resource api://pdp-mcp` works with no consent prompt → register the
+  MCP Inspector SPA redirect URIs. The Graph PATCH reads-modifies-writes the whole `api` object so the
+  exposed scope is preserved.
 
   Requires: az login as an identity allowed to create app registrations (Application Developer / Cloud
   Application Administrator, or a tenant that permits user app registration).
@@ -72,8 +73,8 @@ if ($LASTEXITCODE -ne 0) {
 
 # v2 tokens MUST be set BEFORE the identifier URI: a strict tenant (e.g. MCAPS) rejects a bare
 # `api://pdp-mcp` URI ("must contain a verified domain, tenant id, or app id") UNLESS the app issues
-# v2 access tokens. Read-modify-write the WHOLE api object so the auto-created user_impersonation scope
-# is preserved (a partial PATCH of `api` replaces the complex type and would drop the scope).
+# v2 access tokens. Read-modify-write the WHOLE api object so any existing exposed scope is preserved
+# (a partial PATCH of `api` replaces the complex type and would drop the scope).
 # PATCH the app's `api` block. Two passes are REQUIRED: Graph validates
 # preAuthorizedApplications.delegatedPermissionIds against the ALREADY-PERSISTED scopes, so a brand-new
 # scope and its pre-authorization cannot land in one request. Pass 1 creates the scope + v2; pass 2 adds
@@ -100,16 +101,20 @@ if (@($api.oauth2PermissionScopes).Count -ge 1 -and $api.oauth2PermissionScopes[
 }
 else {
   $scopeId = (New-Guid).Guid
+  # Scope value MUST be `mcp:tools`: the MCP server publishes it in the protected-resource-metadata
+  # document (ScopesSupported) and the WWW-Authenticate challenge, so an OAuth client (e.g. MCP Inspector)
+  # requests `api://pdp-mcp/mcp:tools`. Entra rejects a mismatched scope as invalid_scope. The server
+  # validates aud + v2 issuer + oid (NOT scp), so the value only has to match the published contract.
   $api.oauth2PermissionScopes = @(
     [pscustomobject]@{
       id                      = $scopeId
-      value                   = 'user_impersonation'
+      value                   = 'mcp:tools'
       type                    = 'User'
       isEnabled               = $true
-      adminConsentDisplayName = 'Access pdp-mcp as the signed-in owner'
-      adminConsentDescription = 'Allow calling the pdp-mcp MCP endpoint as the signed-in owner.'
-      userConsentDisplayName  = 'Access pdp-mcp'
-      userConsentDescription  = 'Allow calling the pdp-mcp MCP endpoint on your behalf.'
+      adminConsentDisplayName = 'Call pdp-mcp tools as the signed-in owner'
+      adminConsentDescription = 'Allow calling the pdp-mcp MCP tools as the signed-in owner.'
+      userConsentDisplayName  = 'Call pdp-mcp tools'
+      userConsentDescription  = 'Allow calling the pdp-mcp MCP tools on your behalf.'
     }
   )
 }
@@ -135,6 +140,30 @@ if ($LASTEXITCODE -ne 0) {
   if ($LASTEXITCODE -ne 0) { Die "could not set an identifier URI ('$Audience' or '$fallback')" }
   $Audience = $fallback
 }
+
+Write-Step "Registering the MCP Inspector redirect URIs (SPA platform)..."
+# MCP Inspector is a browser app that performs cross-origin PKCE token redemption at
+# http://localhost:6274/oauth/callback. Entra only permits cross-origin redemption for the
+# Single-Page Application platform (else AADSTS9002326), so the URIs go under `spa`, NOT web/public.
+# The server side is unaffected — it just validates the resulting JWT (aud + v2 issuer + oid).
+$spaBody = [pscustomobject]@{
+  spa = [pscustomobject]@{
+    redirectUris = @(
+      'http://localhost:6274/oauth/callback'
+      'http://127.0.0.1:6274/oauth/callback'
+    )
+  }
+} | ConvertTo-Json -Depth 8
+$spaTmp = [IO.Path]::GetTempFileName()
+[IO.File]::WriteAllText($spaTmp, $spaBody, (New-Object Text.UTF8Encoding($false)))
+try {
+  az rest --method PATCH `
+    --uri "https://graph.microsoft.com/v1.0/applications/$objectId" `
+    --headers 'Content-Type=application/json' --body "@$spaTmp" | Out-Null
+  if ($LASTEXITCODE -ne 0) { Die 'Graph PATCH (SPA redirect URIs) failed' }
+}
+finally { Remove-Item $spaTmp -ErrorAction SilentlyContinue }
+Write-Ok 'SPA redirect URIs registered for MCP Inspector'
 
 Write-Ok "App registration ready. Audience = $Audience  (appId $appId)"
 Write-Host ""
