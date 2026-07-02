@@ -61,7 +61,7 @@ injects them.
 | Module | Version (pinned exact) | Result |
 |---|---|---|
 | `Azure/avm-res-app-containerapp/azurerm` | `0.9.0` | ✅ proven under OpenTofu 1.11 by `infra/control-plane-host` (spec 007) |
-| `Azure/avm-res-sql-server/azurerm` | `0.2.1` | ⏳ **NEW adoption — T027 live smoke (throwaway RG: init/plan/apply/destroy of a minimal serverless config) pending; gate for the first live deploy (T034)** |
+| `Azure/avm-res-sql-server/azurerm` | `0.2.1` | ✅ live smoke 2026-07-02 (T027 / quickstart Scenario 2): owner-run one-off `init/plan/apply/destroy` of a minimal serverless config under OpenTofu **1.11.6**, local state, throwaway RG `rg-pdp-westus3-smoke-sql` in the platform sub. Clean apply AND destroy: `GP_S_Gen5_1` + `min_capacity 0.5` + `auto_pause_delay_in_minutes 60` accepted; Entra-**only** admin with no `administrator_login` provisions cleanly; `public_network_access_enabled = false` applies without a PE. Gate for T034 **open**. |
 
 (The spoke's shared ACA environment uses `avm-res-app-managedenvironment` 0.4.0 — pinned and
 justified in `infra/spoke`; 0.5.0 requires Terraform ~>1.12, incompatible with OpenTofu 1.11.x.)
