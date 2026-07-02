@@ -143,9 +143,39 @@ jobs:
             infra/spoke/plan.json
           if-no-files-found: warn
 
-      - name: tofu apply
+      - name: tofu apply (retry transient ACA/AKS capacity exhaustion)
         if: inputs.mode != 'plan'
-        run: tofu apply -input=false -no-color -auto-approve tfplan
+        run: |
+          max_attempts=3
+          retry_delay_seconds=300
+          transient_error_codes='ManagedEnvironmentCapacityHeavyUsageError|AKSCapacityHeavyUsage'
+          transient_error_message='AKS is experiencing heavy usage'
+          apply_output_file='spoke-apply-output.txt'
+          attempt=1
+
+          trap 'rm -f "${apply_output_file}"' EXIT
+
+          while true; do
+            echo "tofu apply attempt ${attempt}/${max_attempts}"
+            set +e
+            tofu apply -input=false -no-color -auto-approve tfplan > "${apply_output_file}" 2>&1
+            apply_exit_code=$?
+            set -e
+            cat "${apply_output_file}"
+
+            if [ "${apply_exit_code}" -eq 0 ]; then
+              break
+            fi
+
+            if [ "${attempt}" -lt "${max_attempts}" ] && { grep -Eiq "${transient_error_codes}" "${apply_output_file}" || grep -Fqi "${transient_error_message}" "${apply_output_file}"; }; then
+              echo "Detected transient ACA/AKS capacity error; retrying in ${retry_delay_seconds}s..."
+              attempt=$((attempt + 1))
+              sleep "${retry_delay_seconds}"
+              continue
+            fi
+
+            exit "${apply_exit_code}"
+          done
 
       - name: Run traceability
         if: always()
