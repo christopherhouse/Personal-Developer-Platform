@@ -90,7 +90,10 @@ variable "postgres_database_name" {
 variable "image_tag" {
   description = "Image tag to deploy for all three apps (e.g. the commit SHA the images workflow pushed). `latest` for first bring-up; pin to a SHA for reproducible deploys."
   type        = string
-  default     = "latest"
+  # spec-008 rollout: pushing a new :latest does NOT roll ACA revisions (the app template is
+  # unchanged), so deploys are SHA-pinned — bump this to the merge commit whose images
+  # controlplane-host-images.yml pushed, and iac-apply rolls fresh revisions for all three apps.
+  default = "2dfb72a91fbb8d98835e174cba45ed721cd2c714"
 }
 
 variable "api_image_repository" {
