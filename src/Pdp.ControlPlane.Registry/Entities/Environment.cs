@@ -16,7 +16,7 @@ public class Environment
     /// </summary>
     public Guid EnvId { get; set; }
 
-    /// <summary>Fabric or spoke (workload deferred to spec 008).</summary>
+    /// <summary>Fabric, spoke, or workload.</summary>
     public EnvironmentKind Kind { get; set; }
 
     /// <summary>Target subscription id (Azure GUID). For a fabric, the platform subscription.</summary>
@@ -25,7 +25,7 @@ public class Environment
     /// <summary>Registered region (e.g. <c>westus3</c>).</summary>
     public required string Region { get; set; }
 
-    /// <summary>Spoke name; for a fabric, the region (a fabric is identified by its region).</summary>
+    /// <summary>Spoke or workload name; for a fabric, the region (a fabric is identified by its region).</summary>
     public required string Name { get; set; }
 
     /// <summary>The requesting principal (owner identity; single-owner platform).</summary>

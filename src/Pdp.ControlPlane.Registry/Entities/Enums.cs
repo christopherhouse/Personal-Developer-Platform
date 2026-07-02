@@ -6,8 +6,41 @@ public enum EnvironmentKind
     /// <summary>A regional hub-and-spoke network fabric (spec 003).</summary>
     Fabric,
 
-    /// <summary>A vended spoke (spec 004). Workload environments are deferred to spec 008.</summary>
+    /// <summary>A vended spoke (spec 004).</summary>
     Spoke,
+
+    /// <summary>
+    /// A workload deployed from the archetype catalog into a vended spoke (spec 008). Carves no
+    /// address space (<c>SpokeCidr</c> stays null); workload-specific facts live in the 1:1
+    /// <see cref="WorkloadDetails"/> row.
+    /// </summary>
+    Workload,
+}
+
+/// <summary>
+/// Catalog lifecycle of an <see cref="Archetype"/> (spec 008, FR-004). Retired = no new deploys;
+/// existing workloads (stamped to a version) are unaffected and remain destroyable.
+/// </summary>
+public enum ArchetypeStatus
+{
+    /// <summary>Deployable: new workloads may resolve this archetype.</summary>
+    Active,
+
+    /// <summary>No new deploys; stamped workloads live on and can still be destroyed.</summary>
+    Retired,
+}
+
+/// <summary>The recorded outcome of one catalog sync pass (spec 008, FR-006 audit).</summary>
+public enum CatalogSyncOutcome
+{
+    /// <summary>The projection was updated from the file (all-or-nothing transaction).</summary>
+    Applied,
+
+    /// <summary>The file hash matched the last successful sync — nothing to do.</summary>
+    NoChange,
+
+    /// <summary>The file was invalid or violated version immutability; the prior projection was kept.</summary>
+    Rejected,
 }
 
 /// <summary>

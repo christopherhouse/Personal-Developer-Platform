@@ -12,5 +12,8 @@ RUN dotnet publish src/Pdp.ControlPlane.Api/Pdp.ControlPlane.Api.csproj -c Relea
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
+# Archetype catalog — repo-managed deployable truth (spec 008, R1). Baked into the api image ONLY;
+# CatalogSyncService projects it into the registry schema at startup (api = sole catalog writer).
+COPY archetypes/catalog.json ./archetypes/catalog.json
 USER $APP_UID
 ENTRYPOINT ["dotnet", "Pdp.ControlPlane.Api.dll"]

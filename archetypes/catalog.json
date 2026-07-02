@@ -1,0 +1,67 @@
+{
+  "$schemaVersion": 1,
+  "archetypes": [
+    {
+      "name": "container-app-sql",
+      "description": "Containerized app on the spoke's shared ACA environment + Azure SQL serverless (private).",
+      "status": "active",
+      "versions": [
+        {
+          "version": "v1.0.0",
+          "modulePath": "archetypes/container-app-sql",
+          "parameterSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["containerImage"],
+            "properties": {
+              "containerImage": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Any resolvable public image reference; references to the platform registry get automatic managed-identity pull (no credentials)."
+              },
+              "publicEndpoint": {
+                "type": "boolean",
+                "default": false,
+                "description": "Explicit opt-in for an externally reachable endpoint. Default: internal-only ingress."
+              },
+              "targetPort": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535,
+                "default": 8080,
+                "description": "The container port ingress targets."
+              },
+              "cpu": {
+                "type": "number",
+                "enum": [0.25, 0.5, 1.0],
+                "default": 0.25,
+                "description": "vCPU cores for the container (consumption profile)."
+              },
+              "memory": {
+                "type": "string",
+                "enum": ["0.5Gi", "1Gi", "2Gi"],
+                "default": "0.5Gi",
+                "description": "Memory for the container (must pair with a valid cpu value)."
+              },
+              "sqlAutoPauseDelayMinutes": {
+                "type": "integer",
+                "minimum": 15,
+                "maximum": 10080,
+                "default": 60,
+                "description": "Idle minutes before the serverless SQL database auto-pauses (compute cost drops to zero)."
+              },
+              "sqlMaxSizeGb": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32,
+                "default": 2,
+                "description": "Maximum SQL database size in GB."
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

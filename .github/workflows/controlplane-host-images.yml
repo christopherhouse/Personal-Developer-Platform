@@ -12,6 +12,9 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      # The archetype catalog is baked into the api image; a catalog PR must rebuild it so the
+      # startup CatalogSyncService projects the new definition into the registry (spec 008, R1).
+      - "archetypes/catalog.json"
       - "Directory.Build.props"
       - "Directory.Packages.props"
       - "global.json"

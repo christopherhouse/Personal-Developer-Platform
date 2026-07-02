@@ -5,12 +5,14 @@ namespace Pdp.ControlPlane.Registry;
 
 /// <summary>
 /// The control-plane registry's EF Core context: the <c>registry</c> schema in the existing platform
-/// Postgres (beside <c>ipam</c> and Wolverine's <c>wolverine</c> schema). Three tables —
-/// <c>environments</c> (intent + lifecycle), <c>provisioning_runs</c> (audit), and
-/// <c>environment_saga</c> (Wolverine EF Core saga storage). snake_case identifiers; IP ranges are
-/// native <c>cidr</c> (<see cref="System.Net.IPNetwork"/>); enums persist as readable text. The
-/// schema is independently droppable for teardown (Article IV / SC-010). Wolverine maps the saga type
-/// here so its EF Core saga storage can persist it (research §2).
+/// Postgres (beside <c>ipam</c> and Wolverine's <c>wolverine</c> schema). Tables —
+/// <c>environments</c> (intent + lifecycle), <c>provisioning_runs</c> (audit),
+/// <c>environment_saga</c> (Wolverine EF Core saga storage), and the spec-008 catalog projection +
+/// workload detail: <c>archetypes</c>, <c>archetype_versions</c>, <c>catalog_syncs</c>,
+/// <c>workloads</c>. snake_case identifiers; IP ranges are native <c>cidr</c>
+/// (<see cref="System.Net.IPNetwork"/>); enums persist as readable text. The schema is independently
+/// droppable for teardown (Article IV / SC-010). Wolverine maps the saga type here so its EF Core
+/// saga storage can persist it (research §2).
 /// </summary>
 public class RegistryDbContext(DbContextOptions<RegistryDbContext> options) : DbContext(options)
 {
@@ -25,6 +27,18 @@ public class RegistryDbContext(DbContextOptions<RegistryDbContext> options) : Db
 
     /// <summary>Wolverine saga state for the environment lifecycle (data-model §3).</summary>
     public DbSet<EnvironmentSaga> EnvironmentSagas => Set<EnvironmentSaga>();
+
+    /// <summary>The catalog projection: archetypes (spec 008; synced from <c>archetypes/catalog.json</c>).</summary>
+    public DbSet<Archetype> Archetypes => Set<Archetype>();
+
+    /// <summary>The catalog projection: immutable archetype versions (spec 008, R2).</summary>
+    public DbSet<ArchetypeVersion> ArchetypeVersions => Set<ArchetypeVersion>();
+
+    /// <summary>The catalog-sync audit trail (spec 008, FR-006).</summary>
+    public DbSet<CatalogSync> CatalogSyncs => Set<CatalogSync>();
+
+    /// <summary>Workload detail rows, 1:1 with <c>kind='workload'</c> environments (spec 008).</summary>
+    public DbSet<WorkloadDetails> Workloads => Set<WorkloadDetails>();
 
     /// <inheritdoc />
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -97,6 +111,72 @@ public class RegistryDbContext(DbContextOptions<RegistryDbContext> options) : Db
                 .HasConversion(
                     t => t == null ? null : t.Value.ToString().ToLowerInvariant(),
                     s => s == null ? null : Enum.Parse<TrackingSource>(s, ignoreCase: true));
+        });
+
+        modelBuilder.Entity<Archetype>(entity =>
+        {
+            entity.ToTable("archetypes");
+            entity.HasKey(a => a.Name);
+
+            entity.Property(a => a.Status)
+                .HasConversion(s => s.ToString().ToLowerInvariant(),
+                    s => Enum.Parse<ArchetypeStatus>(s, ignoreCase: true));
+
+            entity.HasMany(a => a.Versions)
+                .WithOne(v => v.Archetype!)
+                .HasForeignKey(v => v.ArchetypeName)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ArchetypeVersion>(entity =>
+        {
+            entity.ToTable("archetype_versions");
+            // Composite natural key: versions are append-only and content-immutable (R2) — the sync
+            // enforces immutability by comparing content_hash for an existing (name, version).
+            entity.HasKey(v => new { v.ArchetypeName, v.Version });
+
+            // The version's parameter schema is a queryable JSON document (draft 2020-12).
+            entity.Property(v => v.ParameterSchema).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<CatalogSync>(entity =>
+        {
+            entity.ToTable("catalog_syncs");
+            entity.HasKey(s => s.Id);
+
+            entity.Property(s => s.Summary).HasColumnType("jsonb");
+
+            // Explicit map (not ToLowerInvariant): NoChange persists as the data-model's `no_change`.
+            entity.Property(s => s.Outcome)
+                .HasConversion(
+                    o => o == CatalogSyncOutcome.NoChange ? "no_change" : o.ToString().ToLowerInvariant(),
+                    s => s == "no_change" ? CatalogSyncOutcome.NoChange : Enum.Parse<CatalogSyncOutcome>(s, ignoreCase: true));
+        });
+
+        modelBuilder.Entity<WorkloadDetails>(entity =>
+        {
+            entity.ToTable("workloads");
+            entity.HasKey(w => w.EnvId);
+            entity.Property(w => w.EnvId).ValueGeneratedNever();
+
+            // 1:1 extension of the managed-unit row: deleting the environment removes the detail.
+            entity.HasOne(w => w.Environment)
+                .WithOne()
+                .HasForeignKey<WorkloadDetails>(w => w.EnvId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The stamped version must exist and can never be pulled out from under a workload —
+            // Restrict (versions are append-only anyway; this backstops FR-005 at the database).
+            entity.HasOne<ArchetypeVersion>()
+                .WithMany()
+                .HasForeignKey(w => new { w.ArchetypeName, w.ArchetypeVersion })
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Powers the FR-021 spoke-destroy guard ("name the survivors") and spoke-scoped listings.
+            entity.HasIndex(w => new { w.SpokeSubscription, w.SpokeName })
+                .HasDatabaseName("ix_workloads_spoke");
+
+            entity.Property(w => w.Parameters).HasColumnType("jsonb");
         });
 
         modelBuilder.Entity<EnvironmentSaga>(entity =>

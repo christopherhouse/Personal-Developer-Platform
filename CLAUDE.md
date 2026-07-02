@@ -120,44 +120,52 @@ inputs, MCP SDK surface) → always verify live; never answer from memory.
   resource-creating features.
 
 <!-- SPECKIT START -->
-Active feature: 007-mcp-chatops (branch `007-mcp-chatops`).
-Current plan: specs/007-mcp-chatops/plan.md — read it for technical context, project structure, and
-constitution gates. Supporting design artifacts: specs/007-mcp-chatops/ research.md, data-model.md,
-quickstart.md, contracts/{hosting-topology,identity-and-auth,mcp-tool-surface}.md.
-Design decisions (clarify + topology 2026-06-18; plan PASS, no constitution deviations): HOST the
-spec-006 control plane in Azure and add a CONVERSATIONAL front-end. Two coupled deliverables: (1)
-PRODUCTION HOSTING — run the existing Pdp.ControlPlane.Api (webhook handler + Wolverine inbox/outbox +
-reconciler) and Pdp.ControlPlane.Ingress (YARP) on AZURE CONTAINER APPS (workload-profiles env,
-VNet-integrated into the EXISTING control-plane VNet 10.0.0.0/24 — same VNet as the private Postgres) so
-they reach the private IPAM-ledger/registry Postgres the laptop cannot; (2) a NEW ASP.NET Core MCP server
-`Pdp.Mcp` (assembly pdp-mcp; MCP C# SDK `ModelContextProtocol.AspNetCore`, STATELESS streamable HTTP) that
-HOSTS THE SPEC-006 VERB LAYER IN-PROCESS — exactly as the `pdp` CLI does (direct ProjectReference to
-Pdp.ControlPlane.Verbs; NO reimplementation, NO new verb). PUBLIC SURFACE = ONE app: the YARP ingress is
-the only external-ingress app and routes /webhooks/github → INTERNAL api and /mcp (+
-/.well-known/oauth-protected-resource) → INTERNAL mcp (clarify 2026-06-18: "one YARP ingress, both
-routes"; tighter Article IX). IDENTITY = PER-APP user-assigned managed identity (clarify): uami-api +
-uami-mcp are Postgres Entra principals (token scope ossrdbms-aad.../.default via
-Microsoft.Azure.PostgreSQL.Auth) + Reader (ARG) + AcrPull + KeyVault Secrets User; uami-ingress = AcrPull
-ONLY. AUTH = MCP endpoint is an OAUTH 2.1 PROTECTED RESOURCE — Entra JWT validated AT THE MCP SERVER
-(AddJwtBearer + .AddMcp PRM; MapInboundClaims=false), single allow-listed owner `oid` (YARP just forwards
-the Authorization header). Article VIII via TWO-TOOL plan→confirm: Plan<Op> returns plan + single-use
-~5-min confirmation TOKEN; Apply/Destroy requires the token + VERBATIM target-name restatement (a chat
-turn can never destroy without it). SECRETS = GitHub App private key + webhook HMAC secret in KEY VAULT,
-pulled via UAMI (ACA KV-backed secrets) — the ONLY non-Azure secret; zero stored cloud secret, no standing
-cloud write credential (infra writes only in OIDC CI). FOOTPRINT = NEW isolated OpenTofu stack
-infra/control-plane-host (own RG + state platform/control-plane-host) consuming VNet/Postgres/DNS BY
-REFERENCE; AVM modules for ACA managedenvironment/containerapp, ACR(Basic), Log Analytics(PerGB2018 +
-daily cap), App Insights(workspace-based), Key Vault; only azurerm UAMI/role are provider resources
-(README-justified, no AVM module). ACA subnet snet-pdp-westus3-aca 10.0.0.32/27 (delegation
-Microsoft.App/environments) DECLARED in the VNet-owning infra/control-plane stack (avoids AVM VNet-module
-subnet drift) and CONSUMED via data source. One-time MANUAL bootstrap: owner (Postgres Entra admin) runs
-pgaadauth_create_principal_with_oid for uami-api/uami-mcp (tofu outputs the psql; single reviewed step per
-SC-010). SCALE: api+ingress always-on (min 1, for webhook+reconciler); mcp scale-to-zero. App Insights
-(workspace-based) receives the env_id-correlated telemetry spec-006 already emits. UNBLOCKS the spec-006
-live acceptance T071/T072 (control plane now in-VNet next to the ledger). NON-GOALS: no new verb, no APIM,
-no multi-user authz, no workload archetypes (spec 8), no second region (spec 9). NO prohibited deps
-(MediatR/MassTransit/AutoMapper/Moq/Serilog/FluentAssertions v8+). Platform context: live platform in WEST
-US 3; specs 002–006 merged; pdp-orchestrator GitHub App set up. NEW: src/Pdp.Mcp (+ tests/Pdp.Mcp.Tests),
-Dockerfiles for api/ingress/mcp, YARP MCP route in Ingress appsettings, infra/control-plane-host stack,
-controlplane-host-images.yml + controlplane-host-destroy.yml workflows.
+Active feature: 008-workload-archetypes (branch `008-workload-archetypes`).
+Current plan: specs/008-workload-archetypes/plan.md — read it for technical context, project structure,
+and constitution gates (PASS, no deviations). Supporting artifacts: specs/008-workload-archetypes/
+research.md (R1–R11), data-model.md, quickstart.md, contracts/{workload-verbs,archetype-catalog,
+execution-plane}.md.
+Design decisions (clarify + plan 2026-07-02): make the platform deploy SOLUTIONS into vended spokes.
+(1) ARCHETYPE CATALOG = repo-managed declarative archetypes/catalog.json (PR-only; chat/CLI can NEVER
+alter deployable truth), BAKED into the api image and startup-SYNCED into registry Postgres by
+CatalogSyncService (api = sole writer; sync idempotent; versions append-only + content-hash IMMUTABLE —
+differing hash fails the sync loudly, invalid file keeps last good projection). Tables: archetypes,
+archetype_versions (module_path + parameter_schema jsonb + git-tag version), catalog_syncs (audit),
+workloads (1:1 env detail). Params validated with JsonSchema.Net (NEW package, draft 2020-12,
+OutputFormat.List → per-parameter errors) BEFORE any intent/dispatch; validation order: FluentValidation
+shape → catalog (active, newest active version) → JSON schema → spoke exists+Active → intent.
+(2) WORKLOAD VERBS extend spec-006 with ZERO reimplementation: workload = environments row
+(EnvironmentKind.Workload, new EF migration) + registry.workloads detail; same saga via
+BeginWorkloadDeploy/BeginWorkloadDestroy (NO IPAM steps — workloads carve no address space); natural key
+unchanged ⇒ workload names unique PER SUBSCRIPTION. IWorkloadVerbs Plan/Deploy/PlanDestroy/Destroy mirrors
+ISpokeVerbs; ConfirmationGuard verbatim restatement + workflow destroy-confirm input (both layers). MCP:
+PlanWorkloadDeploy/ApplyWorkloadDeploy/PlanWorkloadDestroy/DestroyWorkload (+2 ConfirmationOperation
+members, same 15-min single-use token). CLI: pdp workload deploy|destroy (destroy --confirm restates name,
+no --yes bypass). SpokeVerbs destroy gains FR-021 guard: refuse while active workloads exist, naming
+survivors. State per workload: workloads/<sub-id>/<spoke-name>/<workload-name> (partial backend key at
+init). Workflows workload-deploy.yml/workload-destroy.yml mirror spoke-vend/destroy with run-name
+`pdp <mode> <env_id>`; PINNED-TAG execution = actions/checkout ref=archetype/<name>/<version> then
+tofu -chdir=<module_path> (deployed workloads keep their stamped tag; destroy checks out the stamped tag).
+(3) FIRST ARCHETYPE archetypes/container-app-sql: container app (AVM containerapp 0.9.0) on a NEW
+per-spoke SHARED ACA environment + Azure SQL SERVERLESS auto-pause (NEW AVM avm-res-sql-server 0.2.1 —
+smoke-validate under OpenTofu 1.11 first; managedenvironment stays 0.4.0, 0.5.0 needs TF ~>1.12).
+Private by default: ingress.external=false unless publicEndpoint param; SQL Entra-only auth
+(workload UAMI = server Entra admin — zero secrets), public access disabled, PE into spoke workload
+subnet. Tags pdp-workload + pdp-env (env regex ^[a-z0-9-]{1,16}$) ⇒ ListWorkloadEnvironments lights up
+with NO inventory code change. CROSS-SPEC STACK EDITS (recorded, 007 precedent — subnets belong to the
+VNet-owning stack): infra/spoke default subnets = workload + aca (/27 delegated Microsoft.App/environments)
++ shared cae-pdp-<region>-<spoke> (workload-profiles, consumption-only, EXTERNAL env, VNet-integrated,
+diagnostics → shared LA) + output spoke_aca_environment_id; infra/platform-dns +
+privatelink.database.windows.net; infra/fabric shared_dns_zone_ids += sql (spokes auto-link);
+controlplane-host-images.yml paths += archetypes/catalog.json. RISK R10: hub firewall may need ACA
+platform FQDN application rules (mcr.microsoft.com etc.) — live-acceptance contingency via fabric PR.
+TEMPLATE REPO pdp-workload-template (separate GitHub template repo): .NET 10 minimal API (health + SQL
+route via Microsoft.Data.SqlClient managed identity), CI consumes the platform's FIRST reusable
+workflow_call workflow reusable-container-build.yml (OIDC → az acr login → build/push sha+latest);
+one-time per stamped repo: federated credential + AcrPush + AZURE_* variables (README, SC-010 precedent).
+Image refs: any public ref OR platform ACR (auto managed-identity pull, no creds as params). CLI live
+acceptance via transient ACA job (laptop can't reach private Postgres — by design). NON-GOALS: no in-place
+workload upgrade/reconfigure (destroy→deploy), no second archetype, no workload CD, no multi-region
+(spec 9), no cost reporting (spec 10). NO prohibited deps. Platform context: live in WEST US 3; specs
+002–007 merged; spec-007 host teardown verification still deferred to spec 9.
 <!-- SPECKIT END -->

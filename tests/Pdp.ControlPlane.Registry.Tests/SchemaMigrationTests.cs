@@ -42,6 +42,11 @@ public sealed class SchemaMigrationTests : IAsyncLifetime
         (await TableExistsAsync(context, "environments")).ShouldBeTrue();
         (await TableExistsAsync(context, "provisioning_runs")).ShouldBeTrue();
         (await TableExistsAsync(context, "environment_saga")).ShouldBeTrue();
+        // Spec 008 (WorkloadCatalog migration): catalog projection + workload detail.
+        (await TableExistsAsync(context, "archetypes")).ShouldBeTrue();
+        (await TableExistsAsync(context, "archetype_versions")).ShouldBeTrue();
+        (await TableExistsAsync(context, "catalog_syncs")).ShouldBeTrue();
+        (await TableExistsAsync(context, "workloads")).ShouldBeTrue();
 
         // Teardown: migrate back to 0 — the equivalent of `dotnet ef database update 0`.
         var migrator = context.GetService<IMigrator>();
@@ -51,6 +56,10 @@ public sealed class SchemaMigrationTests : IAsyncLifetime
         (await TableExistsAsync(context, "environments")).ShouldBeFalse();
         (await TableExistsAsync(context, "provisioning_runs")).ShouldBeFalse();
         (await TableExistsAsync(context, "environment_saga")).ShouldBeFalse();
+        (await TableExistsAsync(context, "archetypes")).ShouldBeFalse();
+        (await TableExistsAsync(context, "archetype_versions")).ShouldBeFalse();
+        (await TableExistsAsync(context, "catalog_syncs")).ShouldBeFalse();
+        (await TableExistsAsync(context, "workloads")).ShouldBeFalse();
     }
 
     // to_regclass returns NULL when the relation does not exist (no exception). Cast to text so
