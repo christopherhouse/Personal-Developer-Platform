@@ -43,21 +43,21 @@ Candidate feature specs in proposed build order. Each row becomes a
   VNet-injected + Entra-only and unreachable from the owner's laptop without VNet access (no `/32`
   firewall possible on a VNet-injected server). It is naturally unblocked by **spec 7**, which hosts the
   control plane in-VNet (ACA + managed identity).
-- **Spec 7 (mcp-chatops)** — **in progress** (branch `007-mcp-chatops`). All authorable work complete;
-  only live Azure steps remain (dispatched CI). Done: the new `infra/control-plane-host` OpenTofu stack
-  (RG + 3 per-app UAMIs + ACR Basic + Key Vault + Log Analytics + workspace-based App Insights + ACA
-  workload-profiles env + `ingress`/`api`/`mcp` container apps), the `Pdp.Mcp` ASP.NET Core MCP server
-  (stateless streamable HTTP) hosting the spec-006 verb layer in-process with an Entra OAuth 2.1
-  protected-resource gate (single-owner `oid`) + the Article VIII two-tool plan→confirm token, the
-  conversational vend/destroy/read tools, `env_id`-correlated App Insights wiring, the ACA subnet added
-  to `infra/control-plane`, Dockerfiles for api/ingress/mcp, and the
-  `controlplane-host-images.yml` / `controlplane-host-destroy.yml` workflows. `dotnet test` green
-  (33 tests); `tofu fmt`/`validate` green on both stacks. **Remaining = live only**: deploy via CI rails,
-  the one-time `pgaadauth` principal bootstrap (SC-010), and the live acceptance runs (MCP auth gate,
-  chat vend→destroy, conversational reads, telemetry trace, teardown).
-- **Spec 6 T071/T072 — UNBLOCKED by spec 7**: the control plane now runs in-VNet on ACA next to the
-  private ledger, so the deferred live spoke vend/destroy acceptance can run against the hosted control
-  plane (spec-7 US1, quickstart Scenario 7).
+- **Spec 7 (mcp-chatops)** — **complete** (2026-07-02), with one recorded deferral. Live on `westus3`:
+  the `infra/control-plane-host` stack (RG + 3 per-app UAMIs + ACR + Key Vault + Log Analytics +
+  workspace-based App Insights + ACA workload-profiles env + `ingress`/`api`/`mcp` container apps), the
+  `Pdp.Mcp` MCP server (stateless streamable HTTP, spec-006 verb layer in-process) behind the Entra
+  OAuth 2.1 protected-resource gate + the Article VIII two-tool plan→confirm token (async
+  dispatch-and-return after the Phase 9 amendment). **Live acceptance passed**: auth gate, conversational
+  reads (2026-07-01), chat plan→confirm **vend→destroy of a live spoke** (spoke-vend applies 2026-06-24/25,
+  spoke-destroys 2026-06-25 and 2026-07-01 — **closing the deferred spec-006 T071/T072**), and the
+  `env_id`-correlated App Insights trace. **Deferred (T054/T055 + quickstart Scenario 8)**: the live
+  host-stack teardown verification — the gated `controlplane-host-destroy.yml` + cleanup runbook are
+  merged but intentionally never dispatched, because the host stack *is* the live control plane that
+  specs 8/9 depend on. Verify at the first host rebuild/migration, **at latest spec 9 (multi-region)**.
+- **Spec 6 T071/T072 — CLOSED by spec 7** (2026-07-01): the deferred live spoke vend/destroy acceptance
+  ran against the hosted, in-VNet control plane through the MCP chat surface (spec-7 quickstart
+  Scenario 7).
 
 ## Notes
 
@@ -67,3 +67,6 @@ Candidate feature specs in proposed build order. Each row becomes a
   trustworthy.
 - The list will grow; add candidates here before spinning up a spec so
   dependencies stay visible.
+- **Standing deferral**: spec-7 live host-stack teardown verification (007 T054/T055,
+  quickstart Scenario 8) rides on the first spec that rebuilds or migrates the
+  control-plane host — at latest spec 9 (multi-region). Pick it up there.
