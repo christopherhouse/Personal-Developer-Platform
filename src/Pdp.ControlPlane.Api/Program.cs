@@ -13,6 +13,7 @@ using Octokit.Webhooks;
 using Octokit.Webhooks.AspNetCore;
 using Pdp.ControlPlane.Api.Webhooks;
 using Pdp.ControlPlane.Dispatch;
+using Pdp.ControlPlane.Registry.Catalog;
 using Pdp.ControlPlane.Verbs;
 using Pdp.ControlPlane.Verbs.Hosting;
 using Wolverine;
@@ -85,6 +86,12 @@ builder.UseWolverine(opts =>
 // The webhook handler is resolved per request by MapGitHubWebhooks; scoped so it can take the scoped
 // Wolverine IMessageBus. It only enqueues to the durable inbox — no business logic (defense in depth).
 builder.Services.AddScoped<WebhookEventProcessor, GitHubWebhookHandler>();
+
+// Project the baked-in archetypes/catalog.json into the registry at startup (spec 008, R1). This host
+// is the catalog's SOLE writer — the MCP app reads the projected tables and never syncs (no dual
+// writers). A rejected/invalid file is loud but non-fatal: the previous projection keeps serving.
+builder.Services.Configure<CatalogSyncOptions>(builder.Configuration.GetSection(CatalogSyncOptions.SectionName));
+builder.Services.AddHostedService<CatalogSyncService>();
 
 // Seed the recurring reconcile sweep on startup; RunReconciler reschedules itself thereafter (SC-006).
 builder.Services.AddHostedService<ReconcilerScheduler>();

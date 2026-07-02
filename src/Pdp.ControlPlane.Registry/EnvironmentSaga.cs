@@ -213,6 +213,97 @@ public class EnvironmentSaga : Saga
     }
 
     /// <summary>
+    /// Starts the workload-<b>deploy</b> lifecycle (spec 008, US1) — the same atomic intent-write +
+    /// dispatch as a spoke create, minus IPAM: a workload carves no address space (<c>SpokeCidr</c>
+    /// stays null; no allocation to release on any path). The <c>registry.workloads</c> detail row
+    /// (spoke, stamped version, parameters) is written by the verb layer, not here. The first run is
+    /// dispatched in <see cref="WorkloadDispatchInputs.Mode"/> (plan for the Article VIII gate, or the
+    /// one-shot apply).
+    /// </summary>
+    /// <returns>The first-phase dispatch command, cascaded through the outbox after commit.</returns>
+    public DispatchWorkflowCommand Start(BeginWorkloadDeploy message, RegistryDbContext db)
+    {
+        var inputs = message.Inputs;
+
+        Id = message.EnvId;
+        Status = EnvironmentStatus.Provisioning;
+        CurrentPhase = inputs.Mode;
+        CurrentRunId = inputs.RunId;
+        PendingConfirmation = false;
+
+        var now = DateTimeOffset.UtcNow;
+
+        var environment = db.Environments.Local.FirstOrDefault(e => e.EnvId == message.EnvId)
+            ?? db.Environments.Find(message.EnvId);
+        if (environment is null)
+        {
+            environment = new Environment
+            {
+                EnvId = message.EnvId,
+                Kind = EnvironmentKind.Workload,
+                Subscription = inputs.Subscription,
+                Region = inputs.Region,
+                Name = inputs.Name,
+                Owner = inputs.Owner,
+                CreatedAt = now,
+            };
+            db.Environments.Add(environment);
+        }
+
+        environment.Status = EnvironmentStatus.Provisioning;
+        environment.Owner = inputs.Owner;
+        environment.UpdatedAt = now;
+
+        AddRun(db, inputs.RunId, message.EnvId, inputs.Mode, inputs.WorkflowFile, inputs.Inputs, now);
+
+        return new DispatchWorkflowCommand(
+            message.EnvId,
+            inputs.RunId,
+            inputs.WorkflowFile,
+            inputs.GitRef,
+            inputs.Mode,
+            inputs.Inputs);
+    }
+
+    /// <summary>
+    /// Starts the workload-<b>destroy</b> lifecycle (spec 008, US2). Flips the workload to
+    /// <c>Destroying</c>, records the destroy run, and cascades the dispatch — all atomically. No
+    /// release step on success or failure: workloads hold no allocation (contrast
+    /// <see cref="Start(BeginSpokeDestroy, RegistryDbContext)"/>).
+    /// </summary>
+    /// <returns>The first-phase destroy dispatch command, cascaded after commit.</returns>
+    public DispatchWorkflowCommand Start(BeginWorkloadDestroy message, RegistryDbContext db)
+    {
+        var inputs = message.Inputs;
+
+        Id = message.EnvId;
+        Status = EnvironmentStatus.Destroying;
+        CurrentPhase = inputs.Mode;
+        CurrentRunId = inputs.RunId;
+        PendingConfirmation = false;
+
+        var now = DateTimeOffset.UtcNow;
+
+        var environment = db.Environments.Local.FirstOrDefault(e => e.EnvId == message.EnvId)
+            ?? db.Environments.Find(message.EnvId);
+        if (environment is not null)
+        {
+            environment.Status = EnvironmentStatus.Destroying;
+            environment.UpdatedAt = now;
+        }
+
+        AddRun(db, inputs.RunId, message.EnvId, inputs.Mode, inputs.WorkflowFile, inputs.Inputs, now);
+
+        return new DispatchWorkflowCommand(
+            message.EnvId,
+            inputs.RunId,
+            inputs.WorkflowFile,
+            inputs.GitRef,
+            inputs.Mode,
+            inputs.Inputs);
+    }
+
+    /// <summary>
     /// The owner confirmed a surfaced plan (Article VIII / FR-006). If the saga is in fact awaiting
     /// confirmation, records the gated mutation run and cascades its dispatch (apply after a
     /// create-plan, destroy after a destroy-plan); otherwise it is an idempotent no-op (a late/duplicate

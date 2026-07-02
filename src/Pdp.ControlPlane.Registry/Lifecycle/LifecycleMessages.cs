@@ -132,6 +132,56 @@ public sealed record BeginFabricDestroy(
     RunPhase Mode = RunPhase.Destroy);
 
 /// <summary>
+/// The dispatch envelope shared by the workload saga messages (spec 008 — contracts/workload-verbs.md).
+/// Mirrors the field set of the spoke messages minus <c>SpokeCidr</c>: workloads carve no address
+/// space, so there is no IPAM interaction anywhere in their lifecycle. The verb layer builds the
+/// workflow <see cref="Inputs"/> (env_id, mode, archetype_path, archetype_ref, parameters_json,
+/// pdp_env, …) and pre-resolves <see cref="RunId"/>; workload-specific facts beyond dispatch (spoke,
+/// stamped version, parameters) live on the <c>registry.workloads</c> detail row, not here.
+/// </summary>
+/// <param name="Subscription">Target subscription id (== the containing spoke's).</param>
+/// <param name="Region">The spoke's region, copied at deploy.</param>
+/// <param name="Name">Workload name (natural-key component; unique per subscription — R4).</param>
+/// <param name="Owner">Requesting principal.</param>
+/// <param name="RunId">The pre-resolved provisioning-run id (UUIDv7).</param>
+/// <param name="WorkflowFile">The dispatch workflow (<c>workload-deploy.yml</c> / <c>workload-destroy.yml</c>).</param>
+/// <param name="GitRef">The git ref the <b>workflow definition</b> is dispatched against (default
+/// branch — the module content is pinned separately by the <c>archetype_ref</c> input, R7).</param>
+/// <param name="Inputs">The exact <c>workflow_dispatch</c> inputs.</param>
+/// <param name="Mode">The phase the first run dispatches (plan for the Article VIII gate, or the one-shot apply/destroy).</param>
+public sealed record WorkloadDispatchInputs(
+    string Subscription,
+    string Region,
+    string Name,
+    string Owner,
+    Guid RunId,
+    string WorkflowFile,
+    string GitRef,
+    IReadOnlyDictionary<string, string> Inputs,
+    RunPhase Mode);
+
+/// <summary>
+/// Starts a workload-<b>deploy</b> saga (spec 008, US1). Identical flow to
+/// <see cref="BeginSpokeProvisioning"/> minus the IPAM allocate step — the saga's <c>Start</c> upserts
+/// the <c>kind='workload'</c> environment row to <c>Provisioning</c>, records the dispatch run, and
+/// cascades the <c>workload-deploy.yml</c> dispatch in one durable transaction.
+/// </summary>
+/// <param name="EnvId">The surrogate correlation key (UUIDv7).</param>
+/// <param name="Inputs">The dispatch envelope.</param>
+public sealed record BeginWorkloadDeploy(Guid EnvId, WorkloadDispatchInputs Inputs);
+
+/// <summary>
+/// Starts a workload-<b>destroy</b> saga (spec 008, US2). Identical flow to
+/// <see cref="BeginSpokeDestroy"/> minus the IPAM release step. The verb has already enforced
+/// <c>ConfirmationGuard.RequireMatch</c> and resolved the <b>stamped</b> archetype version into the
+/// dispatch inputs (destroy checks out the same tag that was applied — R7); the workflow's
+/// <c>destroy-confirm</c> input is the second gate layer (Article VIII).
+/// </summary>
+/// <param name="EnvId">The surrogate correlation key of the workload being destroyed.</param>
+/// <param name="Inputs">The dispatch envelope.</param>
+public sealed record BeginWorkloadDestroy(Guid EnvId, WorkloadDispatchInputs Inputs);
+
+/// <summary>
 /// The owner's explicit confirmation of a previously surfaced plan (Article VIII / FR-006) — routed to
 /// the one saga awaiting confirmation, which dispatches the gated mutation (<see cref="RunPhase.Apply"/>
 /// after a create-plan, <see cref="RunPhase.Destroy"/> after a destroy-plan). Ignored if the saga is
