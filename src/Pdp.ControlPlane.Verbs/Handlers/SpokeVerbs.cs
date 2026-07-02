@@ -63,7 +63,10 @@ public sealed class SpokeVerbs(
         {
             if (envIdTask.IsCompletedSuccessfully)
             {
-                await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false);
+                // Best-effort cleanup — if the abort itself fails, the original exception must
+                // still propagate; a secondary failure here must not replace it.
+                try { await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false); }
+                catch { /* swallow: original exception takes priority */ }
             }
             throw;
         }
@@ -132,7 +135,10 @@ public sealed class SpokeVerbs(
         {
             if (envIdTask.IsCompletedSuccessfully)
             {
-                await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false);
+                // Best-effort cleanup — if the abort itself fails, the original exception must
+                // still propagate; a secondary failure here must not replace it.
+                try { await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false); }
+                catch { /* swallow: original exception takes priority */ }
             }
             throw;
         }

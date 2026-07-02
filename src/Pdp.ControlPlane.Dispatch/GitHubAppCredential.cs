@@ -45,14 +45,15 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
     /// <inheritdoc />
     public async Task<IGitHubClient> CreateInstallationClientAsync(CancellationToken cancellationToken = default)
     {
-        var now = _timeProvider.GetUtcNow();
-        if (_cachedClient is not null && _cachedToken is not null && now < _cachedTokenExpiresAt - RefreshMargin)
-        {
-            return _cachedClient;
-        }
-
+        // GetInstallationTokenAsync owns its own fast-path check (before the semaphore) and the
+        // double-checked locking inside it — calling it unconditionally avoids a second racy read
+        // of _cachedClient here while still skipping the semaphore on the hot path.
         await GetInstallationTokenAsync(cancellationToken).ConfigureAwait(false);
-        return _cachedClient!;
+
+        // _cachedClient is set atomically with _cachedToken inside the refresh critical section,
+        // so it is guaranteed non-null after a successful return from GetInstallationTokenAsync.
+        return _cachedClient ?? throw new InvalidOperationException(
+            "GitHubAppCredential: installation client was not initialized after token refresh.");
     }
 
     private async Task<string> GetInstallationTokenAsync(CancellationToken cancellationToken)
