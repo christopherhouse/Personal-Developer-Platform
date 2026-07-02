@@ -70,7 +70,12 @@ public class RegistryDbContext(DbContextOptions<RegistryDbContext> options) : Db
             entity.ToTable("provisioning_runs");
             entity.HasKey(r => r.RunId);
 
-            entity.HasIndex(r => r.EnvId).HasDatabaseName("ix_provisioning_runs_env_id");
+            // Composite covering index for the hot query pattern filter-by-env_id + sort-by-dispatched_at
+            // DESC (RunTracker, EnvironmentRegistry.GetRunsAsync). Replaces the single-column index so
+            // PostgreSQL can satisfy the filter + sort from the index alone without a sort step (issue #59).
+            entity.HasIndex(r => new { r.EnvId, r.DispatchedAt })
+                .HasDatabaseName("ix_provisioning_runs_env_id_dispatched")
+                .IsDescending(false, true); // env_id ASC, dispatched_at DESC
 
             // Clean column names for the GitHub fields (snake_case would otherwise split the
             // initialism into git_hub_*); the partial-index filter below relies on these names.

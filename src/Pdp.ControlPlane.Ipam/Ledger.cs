@@ -204,37 +204,28 @@ public sealed class Ledger(IpamDbContext context) : IIpamLedger
     public async Task<RegionView> QueryAsync(string region, CancellationToken cancellationToken = default)
     {
         // Read-only: no transaction or advisory lock — query reports current truth (contract, SC-005).
+        // Single round-trip via Include; replaces the prior two sequential queries (issue #59).
         var pool = await context.RegionPools
             .AsNoTracking()
+            .Include(p => p.Allocations)
             .SingleOrDefaultAsync(p => p.Region == region, cancellationToken)
             ?? throw new RegionNotRegisteredException(region);
 
-        var allocations = await context.Allocations
-            .AsNoTracking()
-            .Where(a => a.PoolId == pool.Id)
-            .ToListAsync(cancellationToken);
-
-        return ToView(pool, allocations);
+        return ToView(pool, pool.Allocations.ToList());
     }
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<RegionView>> QueryAllAsync(CancellationToken cancellationToken = default)
     {
+        // Single round-trip via Include with a server-side join; replaces the prior two full-table
+        // scans + client-side grouping (issue #59).
         var pools = await context.RegionPools
             .AsNoTracking()
+            .Include(p => p.Allocations)
+            .OrderBy(p => p.RegionIndex)
             .ToListAsync(cancellationToken);
 
-        // One pass over allocations, grouped by pool, rather than a query per pool.
-        var allocationsByPool = (await context.Allocations
-                .AsNoTracking()
-                .ToListAsync(cancellationToken))
-            .GroupBy(a => a.PoolId)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<Allocation>)g.ToList());
-
-        return pools
-            .OrderBy(p => p.RegionIndex)
-            .Select(p => ToView(p, allocationsByPool.TryGetValue(p.Id, out var a) ? a : []))
-            .ToList();
+        return pools.Select(p => ToView(p, p.Allocations.ToList())).ToList();
     }
 
     /// <summary>

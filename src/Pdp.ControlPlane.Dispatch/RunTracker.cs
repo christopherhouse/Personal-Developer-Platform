@@ -97,16 +97,28 @@ public sealed class RunTracker(
     /// <inheritdoc />
     public async Task<int> ReconcileInFlightAsync(CancellationToken cancellationToken = default)
     {
-        var inFlight = await context.Environments
+        // Batch-fetch the latest run per in-flight environment in a single query, replacing the prior
+        // N per-environment round-trips (issue #59). All runs for in-flight envs are retrieved and
+        // grouped in memory to find each env's latest dispatched run.
+        var inFlightRuns = await context.ProvisioningRuns
             .AsNoTracking()
-            .Where(e => e.Status == EnvironmentStatus.Provisioning || e.Status == EnvironmentStatus.Destroying)
-            .Select(e => e.EnvId)
+            .Where(r => context.Environments
+                .Where(e => e.Status == EnvironmentStatus.Provisioning ||
+                            e.Status == EnvironmentStatus.Destroying)
+                .Select(e => e.EnvId)
+                .Contains(r.EnvId))
+            .OrderByDescending(r => r.DispatchedAt)
             .ToListAsync(cancellationToken);
 
+        // Group in memory (runs already ordered DESC) to obtain the latest run per env-id.
+        var latestRunByEnv = inFlightRuns
+            .GroupBy(r => r.EnvId)
+            .ToDictionary(g => g.Key, g => g.First());
+
         var advanced = 0;
-        foreach (var envId in inFlight)
+        foreach (var (envId, run) in latestRunByEnv)
         {
-            if (await ReconcileOneAsync(envId, cancellationToken).ConfigureAwait(false))
+            if (await ReconcileOneAsync(envId, cancellationToken, run).ConfigureAwait(false))
             {
                 advanced++;
             }
@@ -136,11 +148,13 @@ public sealed class RunTracker(
     /// <summary>
     /// Advances one non-terminal environment's latest run toward a recorded terminal outcome (the shared
     /// body of <see cref="ReconcileInFlightAsync"/> and <see cref="ReconcileEnvironmentAsync"/>). Returns
-    /// whether a run was advanced.
+    /// whether a run was advanced. <paramref name="prefetchedRun"/> may be supplied by the batch sweep
+    /// to avoid an additional per-environment round-trip (issue #59).
     /// </summary>
-    private async Task<bool> ReconcileOneAsync(Guid envId, CancellationToken cancellationToken)
+    private async Task<bool> ReconcileOneAsync(Guid envId, CancellationToken cancellationToken,
+        ProvisioningRun? prefetchedRun = null)
     {
-        var run = await context.ProvisioningRuns
+        var run = prefetchedRun ?? await context.ProvisioningRuns
             .AsNoTracking()
             .Where(r => r.EnvId == envId)
             .OrderByDescending(r => r.DispatchedAt)

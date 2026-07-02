@@ -91,14 +91,17 @@ public sealed class EnvironmentRegistry(RegistryDbContext context) : IEnvironmen
     public async Task AbortCreateAsync(Guid envId, CancellationToken cancellationToken = default)
     {
         var environment = await context.Environments
-            .Include(e => e.Runs)
             .SingleOrDefaultAsync(e => e.EnvId == envId, cancellationToken);
         if (environment is null)
         {
             return;
         }
 
-        if (environment.Runs.Count == 0)
+        // Existence check via a lean indexed EXISTS query instead of loading the full run history.
+        var hasRuns = await context.ProvisioningRuns
+            .AnyAsync(r => r.EnvId == envId, cancellationToken);
+
+        if (!hasRuns)
         {
             // Never dispatched anything — remove the claim cleanly so no orphan row remains (FR-023).
             context.Environments.Remove(environment);
