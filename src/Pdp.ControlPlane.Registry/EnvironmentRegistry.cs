@@ -129,6 +129,38 @@ public sealed class EnvironmentRegistry(RegistryDbContext context) : IEnvironmen
     }
 
     /// <inheritdoc />
+    public async Task<EnvironmentStatus?> ForceTerminalAsync(
+        Guid envId,
+        CancellationToken cancellationToken = default)
+    {
+        var environment = await context.Environments
+            .SingleOrDefaultAsync(e => e.EnvId == envId, cancellationToken);
+        if (environment is null || !IsNonTerminal(environment.Status))
+        {
+            // Unknown, or already terminal — nothing to unwedge (idempotent recovery, issue #48).
+            return null;
+        }
+
+        var prior = environment.Status;
+        environment.Status = EnvironmentStatus.Failed;
+        environment.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Retire the wedged Wolverine saga in the same transaction. Its row survives because the terminal
+        // run signal never arrived (the whole reason the env is stuck); left in place it would collide
+        // (pk_environment_saga) when the next Start — a fresh destroy/create — creates a saga on the same
+        // env_id. Removing it is exactly the MarkCompleted() the dead run would have performed (issue #48).
+        var saga = await context.EnvironmentSagas
+            .SingleOrDefaultAsync(s => s.Id == envId, cancellationToken);
+        if (saga is not null)
+        {
+            context.EnvironmentSagas.Remove(saga);
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+        return prior;
+    }
+
+    /// <inheritdoc />
     public Task<Environment?> FindByIdAsync(Guid envId, CancellationToken cancellationToken = default) =>
         context.Environments
             .AsNoTracking()

@@ -69,6 +69,74 @@ public sealed class EnvironmentRegistryTests(ControlPlanePostgresFixture fixture
     }
 
     [Fact]
+    public async Task Force_terminal_unwedges_a_stuck_non_terminal_environment_and_releases_single_flight()
+    {
+        Guid envId;
+        await using (var context = fixture.CreateRegistryContext())
+        {
+            var registry = new EnvironmentRegistry(context);
+            envId = await registry.BeginCreateAsync(EnvironmentKind.Spoke, Subscription, Region, "wedged", "owner");
+            // Simulate a dispatched apply that died without ever recording terminal (issue #48).
+            await registry.TransitionAsync(envId, EnvironmentStatus.Provisioning);
+        }
+
+        // A mutating claim is refused while it is wedged (single-flight, FR-022a).
+        await using (var blocked = fixture.CreateRegistryContext())
+        {
+            await Should.ThrowAsync<OperationInProgressException>(() =>
+                new EnvironmentRegistry(blocked).BeginCreateAsync(EnvironmentKind.Spoke, Subscription, Region, "wedged", "owner"));
+        }
+
+        // Force-terminal returns the prior non-terminal status and parks the row at Failed.
+        await using (var context = fixture.CreateRegistryContext())
+        {
+            var prior = await new EnvironmentRegistry(context).ForceTerminalAsync(envId);
+            prior.ShouldBe(EnvironmentStatus.Provisioning);
+        }
+
+        await using (var verify = fixture.CreateRegistryContext())
+        {
+            (await new EnvironmentRegistry(verify).FindByIdAsync(envId))!.Status.ShouldBe(EnvironmentStatus.Failed);
+        }
+
+        // The guard is released: a re-create now converges on the same env_id (FR-022).
+        await using (var context = fixture.CreateRegistryContext())
+        {
+            var reclaimed = await new EnvironmentRegistry(context)
+                .BeginCreateAsync(EnvironmentKind.Spoke, Subscription, Region, "wedged", "owner");
+            reclaimed.ShouldBe(envId);
+        }
+    }
+
+    [Fact]
+    public async Task Force_terminal_is_a_no_op_on_an_already_terminal_environment()
+    {
+        Guid envId;
+        await using (var context = fixture.CreateRegistryContext())
+        {
+            var registry = new EnvironmentRegistry(context);
+            envId = await registry.BeginCreateAsync(EnvironmentKind.Spoke, Subscription, Region, "done", "owner");
+            await registry.TransitionAsync(envId, EnvironmentStatus.Active);
+        }
+
+        await using (var context = fixture.CreateRegistryContext())
+        {
+            // Already terminal → null (nothing to unwedge) and the status is left untouched.
+            (await new EnvironmentRegistry(context).ForceTerminalAsync(envId)).ShouldBeNull();
+        }
+
+        await using var verify = fixture.CreateRegistryContext();
+        (await new EnvironmentRegistry(verify).FindByIdAsync(envId))!.Status.ShouldBe(EnvironmentStatus.Active);
+    }
+
+    [Fact]
+    public async Task Force_terminal_on_an_unknown_environment_is_a_null_no_op()
+    {
+        await using var context = fixture.CreateRegistryContext();
+        (await new EnvironmentRegistry(context).ForceTerminalAsync(Guid.CreateVersion7())).ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Status_transitions_walk_the_create_and_destroy_lifecycle()
     {
         await using var context = fixture.CreateRegistryContext();

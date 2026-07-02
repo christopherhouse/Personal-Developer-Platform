@@ -38,6 +38,19 @@ public interface IEnvironmentRegistry
     /// <summary>Transitions an environment to <paramref name="status"/> and stamps <c>UpdatedAt</c>.</summary>
     Task TransitionAsync(Guid envId, EnvironmentStatus status, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Recovery escape hatch: forces a <b>wedged non-terminal</b> environment to
+    /// <see cref="EnvironmentStatus.Failed"/>, releasing the single-flight guard (FR-022a) when its run
+    /// died without ever recording a terminal outcome (issue #48). Also retires the environment's wedged
+    /// Wolverine saga row in the same transaction (it never got its terminal signal, so it survives and
+    /// would otherwise collide when the next destroy/create starts a fresh saga on the same env_id).
+    /// Touches <b>registry state only</b> — it dispatches nothing, mutates no Azure resource, and releases
+    /// no IPAM allocation; the owner then re-plans a destroy/create through the normal verb path.
+    /// Idempotent and safe: a no-op that returns <see langword="null"/> on an already-terminal or unknown
+    /// environment. Returns the prior non-terminal status when it reset one.
+    /// </summary>
+    Task<EnvironmentStatus?> ForceTerminalAsync(Guid envId, CancellationToken cancellationToken = default);
+
     /// <summary>Resolves an environment by its surrogate <c>env_id</c>, or null if unknown.</summary>
     Task<Environment?> FindByIdAsync(Guid envId, CancellationToken cancellationToken = default);
 
