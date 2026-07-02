@@ -83,3 +83,26 @@ jobs:
           if [ "$result" = 'failure' ] || [ "$result" = 'cancelled' ]; then
             exit 1
           fi
+
+  # Failure hook (repo convention — see .github/actions/notify-sre-agent/README.md): on any
+  # job failure, POST run context (failed jobs/steps, error annotations, log tails) to the
+  # Azure SRE Agent HTTP trigger so the agent starts investigating without an owner in the
+  # loop. Best-effort: it never fails this run; skipped entirely when the
+  # SRE_AGENT_TRIGGER_URL repo variable is unset.
+  notify-sre-agent:
+    needs: [changes, build-test, dotnet]
+    if: ${{ failure() && vars.SRE_AGENT_TRIGGER_URL != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # checkout (the local composite action)
+      id-token: write  # azure/login OIDC → bearer token for the trigger
+      actions: read    # this run's jobs + logs (failure context)
+      checks: read     # per-job error annotations
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/notify-sre-agent
+        with:
+          trigger-url: ${{ vars.SRE_AGENT_TRIGGER_URL }}
+          azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}

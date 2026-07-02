@@ -1,0 +1,187 @@
+name: Notify Azure SRE Agent
+description: >-
+  POST failure context for the current workflow run to an Azure SRE Agent HTTP trigger
+  (https://learn.microsoft.com/azure/sre-agent/http-triggers) so the agent starts
+  investigating without an owner in the loop. Best-effort by design: every step
+  tolerates failure, so an unset variable, a failed login, or an unreachable trigger
+  can never fail the calling workflow.
+
+inputs:
+  trigger-url:
+    description: >-
+      The SRE Agent HTTP trigger URL (webhook endpoint). Wire this from the
+      SRE_AGENT_TRIGGER_URL repo variable. When empty, the action logs a warning
+      and does nothing.
+    required: true
+  azure-client-id:
+    description: Client ID of the CI app registration (OIDC federation, plain repo variable).
+    required: true
+  azure-tenant-id:
+    description: Entra tenant ID (plain repo variable).
+    required: true
+  azure-subscription-id:
+    description: Subscription ID for azure/login (plain repo variable).
+    required: true
+  token-resource:
+    description: >-
+      Entra resource (token audience) for the trigger's bearer token. Defaults to the
+      Azure SRE Agent first-party app ID, per the MS Learn troubleshooting guidance
+      ("the token audience must match the SRE Agent app ID, not management.azure.com").
+      On a 401 the action retries once with an ARM-audience token, since the same doc's
+      body describes the header as an ARM token.
+    required: false
+    default: 59f0a04a-b322-4310-adc9-39ac41e9631e
+  github-token:
+    description: Token used to read this run's jobs, logs, and check annotations.
+    required: false
+    default: ${{ github.token }}
+  extra-context:
+    description: Optional JSON object merged into the payload as `extra` (workflow-specific context).
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # OIDC federation — same plain repo variables as the IaC rails, zero stored secrets.
+    # continue-on-error: a login failure must not fail the (already failing) run; the
+    # script below then warns about the missing token and exits 0.
+    - name: Azure login (OIDC)
+      uses: azure/login@v3
+      continue-on-error: true
+      with:
+        client-id: ${{ inputs.azure-client-id }}
+        tenant-id: ${{ inputs.azure-tenant-id }}
+        subscription-id: ${{ inputs.azure-subscription-id }}
+
+    - name: Invoke SRE Agent HTTP trigger
+      shell: bash
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        TRIGGER_URL: ${{ inputs.trigger-url }}
+        TOKEN_RESOURCE: ${{ inputs.token-resource }}
+        EXTRA_CONTEXT: ${{ inputs.extra-context }}
+      run: |
+        set +e  # best-effort end to end — this step must never fail the workflow
+
+        warn() { echo "::warning::notify-sre-agent: $*"; }
+
+        if [ -z "$TRIGGER_URL" ]; then
+          warn "trigger-url is empty (SRE_AGENT_TRIGGER_URL repo variable not set?) — skipping."
+          exit 0
+        fi
+
+        api="repos/${GITHUB_REPOSITORY}/actions"
+
+        # Run metadata + this attempt's jobs. The failing jobs have completed by the time
+        # this job runs (it `needs` them), so their steps carry final conclusions.
+        run_json=$(gh api "${api}/runs/${GITHUB_RUN_ID}" 2>/dev/null) || run_json='{}'
+        jobs_json=$(gh api "${api}/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" 2>/dev/null) \
+          || jobs_json='{"jobs":[]}'
+
+        # Failed jobs (cap 5), each enriched with its failed steps, its error annotations
+        # (::error:: lines + "Process completed with exit code N"), and a short log tail —
+        # the closest thing the API offers to a failure reason.
+        failed_jobs='[]'
+        for job_id in $(printf '%s' "$jobs_json" | jq -r '[.jobs[] | select(.conclusion == "failure")][:5] | .[].id'); do
+          job=$(printf '%s' "$jobs_json" | jq --argjson id "$job_id" '.jobs[] | select(.id == $id)')
+          annotations=$(gh api "repos/${GITHUB_REPOSITORY}/check-runs/${job_id}/annotations" \
+            --jq '[.[] | select(.annotation_level == "failure") | .message] | .[:10]' 2>/dev/null) || annotations='[]'
+          log_tail=$(gh api "${api}/jobs/${job_id}/logs" 2>/dev/null \
+            | sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' | tail -n 60 | tail -c 4000) || log_tail=''
+          entry=$(jq -n --argjson job "$job" --argjson annotations "${annotations:-[]}" --arg log_tail "$log_tail" '{
+            name: $job.name,
+            url: $job.html_url,
+            failed_steps: [($job.steps // [])[] | select(.conclusion == "failure") | {number, name}],
+            error_annotations: $annotations,
+            log_tail: $log_tail
+          }') && failed_jobs=$(printf '%s' "$failed_jobs" | jq --argjson entry "$entry" '. + [$entry]')
+        done
+
+        # Dispatch inputs (env_id / mode / region / spoke_name on the verb workflows) and the
+        # PR, when present, are the correlation surface the agent needs.
+        dispatch_inputs=$(jq -c '.inputs // {}' "$GITHUB_EVENT_PATH" 2>/dev/null) || dispatch_inputs='{}'
+        pr=$(jq -c 'if .pull_request then {number: .pull_request.number, title: .pull_request.title, url: .pull_request.html_url} else null end' \
+          "$GITHUB_EVENT_PATH" 2>/dev/null) || pr='null'
+
+        extra='null'
+        if [ -n "$EXTRA_CONTEXT" ]; then
+          extra=$(printf '%s' "$EXTRA_CONTEXT" | jq -c '.' 2>/dev/null) \
+            || { warn "extra-context is not valid JSON — omitting it."; extra='null'; }
+        fi
+
+        payload=$(jq -n \
+          --argjson run "$run_json" \
+          --argjson failed_jobs "$failed_jobs" \
+          --argjson dispatch_inputs "$dispatch_inputs" \
+          --argjson pr "$pr" \
+          --argjson extra "$extra" \
+          --arg repository "$GITHUB_REPOSITORY" \
+          --arg workflow "$GITHUB_WORKFLOW" \
+          --arg run_id "$GITHUB_RUN_ID" \
+          --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+          --arg server_url "$GITHUB_SERVER_URL" \
+          '{
+            source: "github-actions",
+            kind: "workflow_run_failure",
+            summary: ("GitHub Actions workflow \"" + $workflow + "\" failed in " + $repository
+              + " on branch " + ($run.head_branch // "?")
+              + ". Failed jobs: " + (($failed_jobs | map(.name) | join(", ")) | if . == "" then "unknown" else . end) + "."),
+            repository: $repository,
+            workflow: $workflow,
+            run_id: ($run_id | tonumber),
+            run_attempt: ($run_attempt | tonumber),
+            run_url: ($run.html_url // ($server_url + "/" + $repository + "/actions/runs/" + $run_id)),
+            display_title: $run.display_title,
+            event: $run.event,
+            branch: $run.head_branch,
+            sha: $run.head_sha,
+            actor: ($run.actor.login // null),
+            commit_message: ($run.head_commit.message // null),
+            failed_jobs: $failed_jobs,
+            dispatch_inputs: $dispatch_inputs,
+            pull_request: $pr,
+            extra: $extra
+          } | with_entries(select(.value != null))' 2>/dev/null)
+
+        if [ -z "$payload" ]; then
+          # Enrichment failed — still notify with the bare minimum.
+          payload=$(jq -n --arg repository "$GITHUB_REPOSITORY" --arg workflow "$GITHUB_WORKFLOW" \
+            --arg run_id "$GITHUB_RUN_ID" --arg server_url "$GITHUB_SERVER_URL" \
+            '{source: "github-actions", kind: "workflow_run_failure",
+              summary: ("GitHub Actions workflow \"" + $workflow + "\" failed in " + $repository + "."),
+              repository: $repository, workflow: $workflow, run_id: ($run_id | tonumber),
+              run_url: ($server_url + "/" + $repository + "/actions/runs/" + $run_id)}')
+        fi
+
+        get_token() { az account get-access-token --resource "$1" --query accessToken -o tsv 2>/dev/null; }
+
+        post_trigger() {  # $1 = bearer token; prints the HTTP status code
+          curl -sS -o "$RUNNER_TEMP/sre-trigger-response.txt" -w '%{http_code}' --max-time 30 \
+            -X POST "$TRIGGER_URL" \
+            -H "Authorization: Bearer $1" \
+            -H 'Content-Type: application/json' \
+            --data "$payload" 2>/dev/null
+        }
+
+        token=$(get_token "$TOKEN_RESOURCE")
+        if [ -z "$token" ]; then
+          warn "could not acquire a token for resource '$TOKEN_RESOURCE' (azure/login failed, or the CI identity lacks access) — trigger not invoked."
+          exit 0
+        fi
+
+        status=$(post_trigger "$token")
+        if [ "$status" = "401" ] && [ "$TOKEN_RESOURCE" != "https://management.azure.com" ]; then
+          # The Learn doc is ambiguous about the expected audience (body says ARM,
+          # troubleshooting says the agent app ID) — retry once with ARM.
+          arm_token=$(get_token "https://management.azure.com")
+          [ -n "$arm_token" ] && status=$(post_trigger "$arm_token")
+        fi
+
+        body=$(head -c 500 "$RUNNER_TEMP/sre-trigger-response.txt" 2>/dev/null)
+        case "$status" in
+          2*) echo "SRE Agent trigger accepted (HTTP $status): $body" ;;
+          *)  warn "trigger call did not succeed (HTTP ${status:-n/a}): $body" ;;
+        esac
+        exit 0
