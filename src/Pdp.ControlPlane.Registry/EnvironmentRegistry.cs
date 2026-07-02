@@ -179,6 +179,41 @@ public sealed class EnvironmentRegistry(RegistryDbContext context) : IEnvironmen
                 cancellationToken);
 
     /// <inheritdoc />
+    public async Task UpsertWorkloadDetailsAsync(
+        WorkloadDetails details,
+        CancellationToken cancellationToken = default)
+    {
+        var existing = await context.Workloads
+            .SingleOrDefaultAsync(w => w.EnvId == details.EnvId, cancellationToken);
+        if (existing is null)
+        {
+            context.Workloads.Add(details);
+        }
+        else
+        {
+            // A convergent re-deploy of a terminal workload (FR-022) refreshes the details in place —
+            // including the newly stamped version; the old stamp belonged to the destroyed instance.
+            existing.SpokeSubscription = details.SpokeSubscription;
+            existing.SpokeName = details.SpokeName;
+            existing.ArchetypeName = details.ArchetypeName;
+            existing.ArchetypeVersion = details.ArchetypeVersion;
+            existing.PdpEnv = details.PdpEnv;
+            existing.Parameters = details.Parameters;
+            existing.CreatedAt = details.CreatedAt;
+        }
+
+        await context.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<WorkloadDetails?> FindWorkloadDetailsAsync(
+        Guid envId,
+        CancellationToken cancellationToken = default) =>
+        context.Workloads
+            .AsNoTracking()
+            .SingleOrDefaultAsync(w => w.EnvId == envId, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ProvisioningRun>> GetRunsAsync(
         Guid envId,
         CancellationToken cancellationToken = default) =>

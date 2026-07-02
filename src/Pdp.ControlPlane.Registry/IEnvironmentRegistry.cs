@@ -61,6 +61,17 @@ public interface IEnvironmentRegistry
         string name,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Writes (or overwrites) a workload's 1:1 detail row (spec 008): the containing spoke, the
+    /// <b>stamped</b> archetype version (FR-005), the <c>pdp-env</c> value, and the schema-validated
+    /// parameters as dispatched. Called by the workload verbs right after the natural-key claim; a
+    /// re-deploy of a terminal workload overwrites the details (the environment row converges — FR-022).
+    /// </summary>
+    Task UpsertWorkloadDetailsAsync(WorkloadDetails details, CancellationToken cancellationToken = default);
+
+    /// <summary>Resolves a workload's detail row by its <c>env_id</c>, or null (spec 008).</summary>
+    Task<WorkloadDetails?> FindWorkloadDetailsAsync(Guid envId, CancellationToken cancellationToken = default);
+
     /// <summary>Returns an environment's provisioning-run audit trail, newest first (FR-015).</summary>
     Task<IReadOnlyList<ProvisioningRun>> GetRunsAsync(Guid envId, CancellationToken cancellationToken = default);
 

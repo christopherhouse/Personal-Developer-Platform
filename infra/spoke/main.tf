@@ -148,3 +148,54 @@ resource "azurerm_private_dns_zone_virtual_network_link" "spoke" {
   registration_enabled  = false
   tags                  = local.tags
 }
+
+# ----------------------------------------------------------------------------
+# Spec 008 (R5) — the spoke's SHARED ACA managed environment: every workload archetype's container
+# app runs here (referenced by ID from the workload's own state — an app may live in a different RG
+# than its environment). One env per spoke, vended WITH the spoke, so a workload deploy never
+# mutates spoke state (one-state-per-unit isolation) and sibling workloads carry no destroy-order
+# coupling. Workload-profiles type is MANDATORY — it is what supports the UDR on the delegated
+# `aca` subnet, so ACA egress obeys the spoke's 0.0.0.0/0 → hub-firewall route (Article VII).
+# Consumption profile only: scale-to-zero, $0 idle (Article IX). EXTERNAL env (public LB) with
+# INTERNAL-by-default apps — the spec-007 host pattern; the env's public IP is env-level plumbing,
+# not a workload endpoint (workload ingress stays internal unless publicEndpoint opts in).
+#
+# Pinned to AVM managedenvironment 0.4.0, NOT 0.5.0 — 0.5.0's submodules require Terraform ~>1.12,
+# incompatible with the constitution-pinned OpenTofu 1.11.x (the spec-007 smoke finding).
+# ----------------------------------------------------------------------------
+
+# The platform-shared Log Analytics workspace (infra/platform-observability), read by name in the
+# PLATFORM sub — the env's logs ship there (Article XI; the control-plane-host pattern).
+data "azurerm_log_analytics_workspace" "platform" {
+  provider = azurerm.platform
+
+  name                = var.observability_workspace_name
+  resource_group_name = var.observability_resource_group_name
+}
+
+module "aca_environment" {
+  source  = "Azure/avm-res-app-managedenvironment/azurerm"
+  version = "0.4.0"
+
+  name                = "cae-pdp-${local.region}-${var.spoke_name}"
+  resource_group_name = azurerm_resource_group.spoke.name
+  location            = azurerm_resource_group.spoke.location
+
+  log_analytics_workspace = {
+    resource_id = data.azurerm_log_analytics_workspace.platform.id
+  }
+
+  # VNet injection into the delegated `aca` subnet. With a subnet and no internal-LB flag the
+  # environment is EXTERNAL — required so a workload's opt-in publicEndpoint has a public path;
+  # apps default to internal ingress regardless (spec 008 archetype contract).
+  infrastructure_subnet_id = module.vnet.subnets["aca"].resource_id
+
+  workload_profile = [{
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }]
+
+  zone_redundancy_enabled = false # smallest viable (Article IX)
+  enable_telemetry        = false
+  tags                    = local.tags
+}

@@ -21,3 +21,8 @@ output "spoke_cidr" {
   description = "The spoke address block actually deployed (SC-002 trace) — echoes the validated input."
   value       = var.spoke_cidr
 }
+
+output "spoke_aca_environment_id" {
+  description = "Resource ID of the spoke's shared ACA managed environment (spec 008, R5) — workload archetypes deploy their container apps onto it by ID (cross-RG reference from the workload's own state)."
+  value       = module.aca_environment.resource_id
+}

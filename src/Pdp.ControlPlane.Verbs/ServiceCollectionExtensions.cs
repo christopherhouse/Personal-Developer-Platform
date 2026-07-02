@@ -11,6 +11,7 @@ using Pdp.ControlPlane.Dispatch;
 using Pdp.ControlPlane.Inventory;
 using Pdp.ControlPlane.Ipam;
 using Pdp.ControlPlane.Registry;
+using Pdp.ControlPlane.Registry.Catalog;
 using Pdp.ControlPlane.Verbs.Handlers;
 using Pdp.ControlPlane.Verbs.Model;
 using Pdp.ControlPlane.Verbs.Telemetry;
@@ -86,13 +87,18 @@ public static class ServiceCollectionExtensions
 
         // --- Registry + verbs ------------------------------------------------------------------
         services.AddScoped<IEnvironmentRegistry, EnvironmentRegistry>();
+        // Read-side catalog projection (spec 008): the verb layer resolves deployable archetypes here;
+        // the only writer is the api host's CatalogSyncService (registered there, never here).
+        services.AddScoped<ICatalogStore, CatalogStore>();
         services.AddScoped<ISpokeVerbs, SpokeVerbs>();
+        services.AddScoped<IWorkloadVerbs, WorkloadVerbs>();
         services.AddScoped<IFabricVerbs, FabricVerbs>();
         services.AddScoped<IIpamVerbs, IpamVerbs>();
         services.AddScoped<IInventoryVerbs, InventoryVerbs>();
         services.AddScoped<IRunVerbs, RunVerbs>();
         services.AddScoped<IEnvironmentMaintenanceVerbs, EnvironmentMaintenanceVerbs>();
         services.AddSingleton<IValidator<SpokeCreateRequest>, SpokeCreateRequestValidator>();
+        services.AddSingleton<IValidator<WorkloadDeployRequest>, WorkloadDeployValidator>();
         services.AddSingleton<IValidator<FabricCreateRequest>, FabricCreateRequestValidator>();
 
         // --- Inventory read stack: reuse spec-005 with the injected credential (FR-013) ---------

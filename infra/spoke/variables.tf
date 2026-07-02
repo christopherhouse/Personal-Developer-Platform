@@ -65,7 +65,7 @@ variable "spoke_cidr" {
 }
 
 variable "subnets" {
-  description = "Configurable spoke shape (FR-017): subnet logical-name → { newbits, netnum, delegations }. Each subnet prefix is cidrsubnet(spoke_cidr, newbits, netnum); delegations passes service-delegation names straight through to the AVM module. Default: one workload subnet filling the whole block (newbits=0)."
+  description = "Configurable spoke shape (FR-017): subnet logical-name → { newbits, netnum, delegations }. Each subnet prefix is cidrsubnet(spoke_cidr, newbits, netnum); delegations passes service-delegation names straight through to the AVM module. Default (spec 008, R5): a workload subnet in the lower half plus a delegated aca subnet for the spoke's shared Container Apps environment (a /27 when the spoke is the default /24 — the ACA workload-profiles minimum). A custom shape MUST keep an 'aca' subnet — the shared ACA environment (main.tf) injects into it."
   type = map(object({
     newbits     = number
     netnum      = number
@@ -73,14 +73,39 @@ variable "subnets" {
   }))
   default = {
     workload = {
-      newbits     = 0
+      newbits     = 1
       netnum      = 0
       delegations = []
+    }
+    # Dedicated, delegated subnet for the spoke's shared ACA managed environment (spec 008, R5):
+    # ACA requires sole tenancy + the Microsoft.App/environments delegation. netnum 4 of the /27s
+    # places it directly above the workload half (offset .128 in a /24).
+    aca = {
+      newbits     = 3
+      netnum      = 4
+      delegations = ["Microsoft.App/environments"]
     }
   }
 
   validation {
     condition     = length(var.subnets) >= 1
-    error_message = "At least one subnet is required (the default single workload subnet, FR-017)."
+    error_message = "At least one subnet is required (the default workload + aca shape, FR-017)."
   }
+}
+
+# ---------------------------------------------------------------------------
+# Consumed-by-reference inputs (spec 008) — the shared observability stack, looked up by name
+# (loose coupling, the control-plane-host precedent). This stack creates neither.
+# ---------------------------------------------------------------------------
+
+variable "observability_resource_group_name" {
+  description = "RG of the platform-shared observability stack (infra/platform-observability). The shared Log Analytics workspace is looked up here for the ACA environment's diagnostics (Article XI). NOT modified by this stack."
+  type        = string
+  default     = "rg-pdp-westus3-observability"
+}
+
+variable "observability_workspace_name" {
+  description = "Name of the platform-shared Log Analytics workspace (infra/platform-observability). The spoke's shared ACA environment ships its logs here (Article XI)."
+  type        = string
+  default     = "log-pdp-westus3-platform"
 }

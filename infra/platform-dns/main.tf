@@ -67,3 +67,17 @@ module "zone_kv" {
   enable_telemetry = false
   tags             = local.tags
 }
+
+# Azure SQL private endpoints (spec 008 — the container-app-sql archetype's serverless database
+# resolves through this zone; the fabric links the hub and every vended spoke links itself, so no
+# spoke change is needed for resolution — R6).
+module "zone_sql" {
+  source  = "Azure/avm-res-network-privatednszone/azurerm"
+  version = "0.5.0"
+
+  domain_name = "privatelink.database.windows.net"
+  parent_id   = azurerm_resource_group.dns.id
+
+  enable_telemetry = false
+  tags             = local.tags
+}

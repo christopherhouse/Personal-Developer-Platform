@@ -306,6 +306,9 @@ locals {
     postgres = "privatelink.postgres.database.azure.com"
     blob     = "privatelink.blob.core.windows.net"
     kv       = "privatelink.vaultcore.azure.net"
+    # Azure SQL private endpoints (spec 008): surfacing the zone here auto-links the hub AND every
+    # vended spoke (spokes link every key in shared_dns_zone_ids — the spec-004 mechanism).
+    sql = "privatelink.database.windows.net"
   }
 }
 

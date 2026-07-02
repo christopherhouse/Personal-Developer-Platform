@@ -20,6 +20,12 @@ public enum ConfirmationOperation
 
     /// <summary>Force-reset a wedged environment (the reset that follows <c>PlanResetEnvironment</c>; issue #48).</summary>
     EnvironmentReset,
+
+    /// <summary>Deploy a workload (the apply that follows <c>PlanWorkloadDeploy</c>; spec 008).</summary>
+    WorkloadDeploy,
+
+    /// <summary>Destroy a workload (the destroy that follows <c>PlanWorkloadDestroy</c>; spec 008 US2).</summary>
+    WorkloadDestroy,
 }
 
 /// <summary>
