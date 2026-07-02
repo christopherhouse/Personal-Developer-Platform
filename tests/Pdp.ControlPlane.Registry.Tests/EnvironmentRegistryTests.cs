@@ -131,7 +131,7 @@ public sealed class EnvironmentRegistryTests(ControlPlanePostgresFixture fixture
         var latest = await readRegistry.GetLatestRunAsync(envId);
 
         latest.ShouldNotBeNull();
-        latest!.RunId.ShouldBe(newerRunId);
+        latest.RunId.ShouldBe(newerRunId);
         latest.Phase.ShouldBe(RunPhase.Apply);
     }
 }

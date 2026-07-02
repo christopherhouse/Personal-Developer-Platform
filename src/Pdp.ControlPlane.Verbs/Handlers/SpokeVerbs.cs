@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.Extensions.Logging;
 using Pdp.ControlPlane.Dispatch;
 using Pdp.ControlPlane.Ipam;
 using Pdp.ControlPlane.Ipam.Entities;
@@ -31,7 +32,8 @@ public sealed class SpokeVerbs(
     IEnvironmentRegistry registry,
     IIpamLedger ledger,
     IValidator<SpokeCreateRequest> validator,
-    GitHubAppOptions gitHubOptions) : ISpokeVerbs
+    GitHubAppOptions gitHubOptions,
+    ILogger<SpokeVerbs> logger) : ISpokeVerbs
 {
     private const string VendWorkflow = "spoke-vend.yml";
     private const string DestroyWorkflow = "spoke-destroy.yml";
@@ -66,7 +68,7 @@ public sealed class SpokeVerbs(
                 // Best-effort cleanup — if the abort itself fails, the original exception must
                 // still propagate; a secondary failure here must not replace it.
                 try { await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false); }
-                catch { /* swallow: original exception takes priority */ }
+                catch (Exception abortEx) { logger.LogWarning(abortEx, "AbortCreateAsync failed during plan-create rollback for env {EnvId}.", envIdTask.Result); }
             }
             throw;
         }
@@ -138,7 +140,7 @@ public sealed class SpokeVerbs(
                 // Best-effort cleanup — if the abort itself fails, the original exception must
                 // still propagate; a secondary failure here must not replace it.
                 try { await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false); }
-                catch { /* swallow: original exception takes priority */ }
+                catch (Exception abortEx) { logger.LogWarning(abortEx, "AbortCreateAsync failed during create rollback for env {EnvId}.", envIdTask.Result); }
             }
             throw;
         }
