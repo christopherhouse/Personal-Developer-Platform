@@ -49,10 +49,26 @@ public sealed class SpokeVerbs(
 
         // Fail-fast region check + claim + allocate (Gate-G1) — identical preconditions to a direct
         // create; the only difference is the first dispatched run is mode=plan, not mode=apply.
-        var regionView = await ledger.QueryAsync(request.Region, cancellationToken).ConfigureAwait(false);
-        var envId = await registry
-            .BeginCreateAsync(EnvironmentKind.Spoke, request.Subscription, request.Region, request.Name, owner, cancellationToken)
-            .ConfigureAwait(false);
+        // QueryAsync and BeginCreateAsync have no data dependency on each other; run them concurrently.
+        // If QueryAsync fails (e.g. region not registered) after BeginCreateAsync has already claimed
+        // the row, abort the claim so no orphan remains (FR-023).
+        var regionViewTask = ledger.QueryAsync(request.Region, cancellationToken);
+        var envIdTask = registry
+            .BeginCreateAsync(EnvironmentKind.Spoke, request.Subscription, request.Region, request.Name, owner, cancellationToken);
+        try
+        {
+            await Task.WhenAll(regionViewTask, envIdTask).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (envIdTask.IsCompletedSuccessfully)
+            {
+                await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false);
+            }
+            throw;
+        }
+        var regionView = regionViewTask.Result;
+        var envId = envIdTask.Result;
 
         using var activity = ControlPlaneTelemetry.StartVerb("spoke.plan-create", envId);
 
@@ -90,8 +106,7 @@ public sealed class SpokeVerbs(
             .ConfigureAwait(false);
         if (existing is { Status: EnvironmentStatus.Provisioning })
         {
-            var latest = (await registry.GetRunsAsync(existing.EnvId, cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault();
+            var latest = await registry.GetLatestRunAsync(existing.EnvId, cancellationToken).ConfigureAwait(false);
             if (IsSucceededPlan(latest))
             {
                 return await ConfirmCreateAsync(existing, confirmation, cancellationToken).ConfigureAwait(false);
@@ -103,10 +118,26 @@ public sealed class SpokeVerbs(
         }
 
         // Direct one-shot vend (no prior plan): validate → allocate → dispatch mode=apply → track.
-        var regionView = await ledger.QueryAsync(request.Region, cancellationToken).ConfigureAwait(false);
-        var envId = await registry
-            .BeginCreateAsync(EnvironmentKind.Spoke, request.Subscription, request.Region, request.Name, owner, cancellationToken)
-            .ConfigureAwait(false);
+        // QueryAsync and BeginCreateAsync have no data dependency on each other; run them concurrently.
+        // If QueryAsync fails (e.g. region not registered) after BeginCreateAsync has already claimed
+        // the row, abort the claim so no orphan remains (FR-023).
+        var regionViewTask = ledger.QueryAsync(request.Region, cancellationToken);
+        var envIdTask = registry
+            .BeginCreateAsync(EnvironmentKind.Spoke, request.Subscription, request.Region, request.Name, owner, cancellationToken);
+        try
+        {
+            await Task.WhenAll(regionViewTask, envIdTask).ConfigureAwait(false);
+        }
+        catch
+        {
+            if (envIdTask.IsCompletedSuccessfully)
+            {
+                await registry.AbortCreateAsync(envIdTask.Result, cancellationToken).ConfigureAwait(false);
+            }
+            throw;
+        }
+        var regionView = regionViewTask.Result;
+        var envId = envIdTask.Result;
 
         using var activity = ControlPlaneTelemetry.StartVerb("spoke.create", envId);
 
@@ -174,8 +205,7 @@ public sealed class SpokeVerbs(
         // otherwise this is the one-shot confirmed destroy.
         if (env.Status == EnvironmentStatus.Destroying)
         {
-            var latest = (await registry.GetRunsAsync(env.EnvId, cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault();
+            var latest = await registry.GetLatestRunAsync(env.EnvId, cancellationToken).ConfigureAwait(false);
             if (IsSucceededPlan(latest))
             {
                 return await ConfirmDestroyAsync(env, regionView.RegionIndex, cancellationToken).ConfigureAwait(false);

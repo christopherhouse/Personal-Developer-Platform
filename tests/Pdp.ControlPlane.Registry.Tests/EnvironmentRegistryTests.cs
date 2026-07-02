@@ -84,4 +84,54 @@ public sealed class EnvironmentRegistryTests(ControlPlanePostgresFixture fixture
         await registry.TransitionAsync(envId, EnvironmentStatus.Destroyed);
         (await registry.FindByIdAsync(envId))!.Status.ShouldBe(EnvironmentStatus.Destroyed);
     }
+
+    [Fact]
+    public async Task GetLatestRunAsync_returns_only_the_newest_run_and_null_when_none_exist()
+    {
+        await using var context = fixture.CreateRegistryContext();
+        var registry = new EnvironmentRegistry(context);
+
+        var envId = await registry.BeginCreateAsync(EnvironmentKind.Spoke, Subscription, Region, "app4", "owner");
+
+        // No runs yet — should return null.
+        var noRun = await registry.GetLatestRunAsync(envId);
+        noRun.ShouldBeNull();
+
+        var now = DateTimeOffset.UtcNow;
+        var olderRunId = Guid.CreateVersion7();
+        var newerRunId = Guid.CreateVersion7();
+
+        // Insert two runs with different DispatchedAt timestamps directly so we can control ordering.
+        context.ProvisioningRuns.AddRange(
+            new ProvisioningRun
+            {
+                RunId = olderRunId,
+                EnvId = envId,
+                Phase = RunPhase.Plan,
+                WorkflowFile = "spoke-vend.yml",
+                DispatchInputs = "{}",
+                Outcome = RunOutcome.Succeeded,
+                DispatchedAt = now.AddMinutes(-5),
+            },
+            new ProvisioningRun
+            {
+                RunId = newerRunId,
+                EnvId = envId,
+                Phase = RunPhase.Apply,
+                WorkflowFile = "spoke-vend.yml",
+                DispatchInputs = "{}",
+                Outcome = RunOutcome.Dispatched,
+                DispatchedAt = now,
+            });
+        await context.SaveChangesAsync();
+
+        // GetLatestRunAsync must return the newer run without loading both rows.
+        await using var readContext = fixture.CreateRegistryContext();
+        var readRegistry = new EnvironmentRegistry(readContext);
+        var latest = await readRegistry.GetLatestRunAsync(envId);
+
+        latest.ShouldNotBeNull();
+        latest!.RunId.ShouldBe(newerRunId);
+        latest.Phase.ShouldBe(RunPhase.Apply);
+    }
 }

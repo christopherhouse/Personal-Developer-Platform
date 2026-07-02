@@ -33,6 +33,7 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
 
     private string? _cachedToken;
     private DateTimeOffset _cachedTokenExpiresAt;
+    private IGitHubClient? _cachedClient;
 
     /// <summary>Creates the credential from bound <see cref="GitHubAppOptions"/>.</summary>
     public GitHubAppCredential(GitHubAppOptions options, TimeProvider? timeProvider = null)
@@ -44,10 +45,14 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
     /// <inheritdoc />
     public async Task<IGitHubClient> CreateInstallationClientAsync(CancellationToken cancellationToken = default)
     {
-        var token = await GetInstallationTokenAsync(cancellationToken).ConfigureAwait(false);
-        var client = NewClient();
-        client.Credentials = new Credentials(token);
-        return client;
+        var now = _timeProvider.GetUtcNow();
+        if (_cachedClient is not null && _cachedToken is not null && now < _cachedTokenExpiresAt - RefreshMargin)
+        {
+            return _cachedClient;
+        }
+
+        await GetInstallationTokenAsync(cancellationToken).ConfigureAwait(false);
+        return _cachedClient!;
     }
 
     private async Task<string> GetInstallationTokenAsync(CancellationToken cancellationToken)
@@ -77,6 +82,9 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
 
             _cachedToken = installationToken.Token;
             _cachedTokenExpiresAt = installationToken.ExpiresAt;
+            var client = NewClient();
+            client.Credentials = new Credentials(_cachedToken);
+            _cachedClient = client;
             return _cachedToken;
         }
         finally
