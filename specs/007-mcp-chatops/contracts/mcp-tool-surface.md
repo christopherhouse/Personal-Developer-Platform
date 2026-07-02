@@ -43,6 +43,13 @@ spokes/fabrics — those are control-plane managed units surfaced by `ShowEnviro
 **Destroy** (two-tool, token + verbatim target): `PlanSpokeDestroy`→`DestroySpoke`,
 `PlanFabricDestroy`→`DestroyFabric`.
 
+**Recover** (two-tool, token + verbatim target — issue #48): `PlanResetEnvironment`→`ResetEnvironment`.
+The in-product escape hatch for a unit wedged non-terminal because its run never recorded a terminal
+outcome — the single-flight guard then rejects **every** mutating verb (including destroy). Reset
+force-transitions the environment to `Failed` (and retires its stuck saga), **registry state only** — no
+dispatch, no Azure mutation, no IPAM release — so the normal destroy flow can then tear it down. Kind-agnostic:
+one `IEnvironmentMaintenanceVerbs` verb serves fabrics and spokes.
+
 ## Plan/confirm gate (Article VIII — FR-012/FR-013/FR-018/FR-019/FR-020, SC-002/SC-012)
 
 **Asynchronous, non-blocking, owner-driven** (clarify 2026-06-24). **No tool call ever blocks** waiting for

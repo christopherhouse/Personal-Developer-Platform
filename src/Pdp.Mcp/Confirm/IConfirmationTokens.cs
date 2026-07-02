@@ -17,6 +17,9 @@ public enum ConfirmationOperation
 
     /// <summary>Destroy a regional fabric (the destroy that follows <c>PlanFabricDestroy</c>).</summary>
     FabricDestroy,
+
+    /// <summary>Force-reset a wedged environment (the reset that follows <c>PlanResetEnvironment</c>; issue #48).</summary>
+    EnvironmentReset,
 }
 
 /// <summary>

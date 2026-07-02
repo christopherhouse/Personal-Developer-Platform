@@ -49,6 +49,31 @@ public sealed class ConfirmationRequiredException : Exception
 }
 
 /// <summary>
+/// A recovery reset was requested for an environment that is <b>already in a terminal state</b> — there
+/// is nothing to unwedge (issue #48). Reset exists only to clear a single-flight guard (FR-022a) left
+/// stuck by a run that never recorded terminal; a terminal environment is already free for the normal
+/// plan/create/destroy path, so the verb rejects fail-fast before mutating anything.
+/// </summary>
+public sealed class EnvironmentNotWedgedException : Exception
+{
+    /// <summary>Creates the exception for an environment that is already terminal.</summary>
+    public EnvironmentNotWedgedException(Guid envId, EnvironmentStatus status)
+        : base($"Environment {envId} is in a terminal state ('{status}'); there is nothing to reset. " +
+               "Reset only unwedges an environment stuck non-terminal (Requested/Provisioning/Destroying) " +
+               "whose run never completed (issue #48).")
+    {
+        EnvId = envId;
+        Status = status;
+    }
+
+    /// <summary>The already-terminal environment.</summary>
+    public Guid EnvId { get; }
+
+    /// <summary>The terminal status that means there is nothing to reset.</summary>
+    public EnvironmentStatus Status { get; }
+}
+
+/// <summary>
 /// A verb referenced an environment that the registry does not know — the operation cannot proceed
 /// (fail-fast, no dispatch — FR-023).
 /// </summary>

@@ -118,7 +118,8 @@ builder.Services
     .WithTools<FabricTools>(toolJsonOptions)
     .WithTools<IpamTools>(toolJsonOptions)
     .WithTools<InventoryTools>(toolJsonOptions)
-    .WithTools<RunTools>(toolJsonOptions);
+    .WithTools<RunTools>(toolJsonOptions)
+    .WithTools<MaintenanceTools>(toolJsonOptions);
 
 // Entra OAuth 2.1 protected-resource auth: JWT validation + PRM publication + the single-owner oid policy.
 builder.Services.AddOwnerAuthorization(builder.Configuration);
