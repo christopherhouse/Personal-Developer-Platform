@@ -148,12 +148,14 @@ jobs:
         run: |
           max_attempts=3
           retry_delay_seconds=300
+          transient_error_patterns='ManagedEnvironmentCapacityHeavyUsageError|AKSCapacityHeavyUsage|AKS is experiencing heavy usage'
+          apply_output_file='spoke-apply-output.txt'
           attempt=1
 
           while true; do
             echo "tofu apply attempt ${attempt}/${max_attempts}"
             set +e
-            tofu apply -input=false -no-color -auto-approve tfplan 2>&1 | tee apply.txt
+            tofu apply -input=false -no-color -auto-approve tfplan 2>&1 | tee "${apply_output_file}"
             apply_exit_code=${PIPESTATUS[0]}
             set -e
 
@@ -161,7 +163,7 @@ jobs:
               break
             fi
 
-            if [ "${attempt}" -lt "${max_attempts}" ] && grep -Eiq 'ManagedEnvironmentCapacityHeavyUsageError|AKSCapacityHeavyUsage|AKS is experiencing heavy usage' apply.txt; then
+            if [ "${attempt}" -lt "${max_attempts}" ] && grep -Eiq "${transient_error_patterns}" "${apply_output_file}"; then
               echo "Detected transient ACA/AKS capacity error; retrying in ${retry_delay_seconds}s..."
               attempt=$((attempt + 1))
               sleep "${retry_delay_seconds}"
