@@ -42,6 +42,14 @@
     <PackageVersion Include="System.CommandLine" Version="2.0.9" />
   </ItemGroup>
 
+  <ItemGroup Label="Archetype parameter validation (spec 008)">
+    <!-- json-everything JSON Schema evaluator (draft 2020-12 default). Registry validates every
+         catalog parameterSchema parses at sync; Verbs evaluate caller parameters against the
+         archetype's schema (OutputFormat.List -> per-parameter violations) BEFORE any intent row
+         or dispatch. Sanctioned by docs/tech-stack.md. -->
+    <PackageVersion Include="JsonSchema.Net" Version="7.4.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Azure SDK + telemetry (specs 005/006)">
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Azure.ResourceManager" Version="1.14.0" />

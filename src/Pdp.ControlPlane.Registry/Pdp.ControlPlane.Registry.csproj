@@ -19,6 +19,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="WolverineFx" />
+    <!-- Catalog sync (spec 008): every parameterSchema in archetypes/catalog.json must parse as a
+         valid draft 2020-12 schema before the projection is applied. -->
+    <PackageReference Include="JsonSchema.Net" />
   </ItemGroup>
 
 </Project>

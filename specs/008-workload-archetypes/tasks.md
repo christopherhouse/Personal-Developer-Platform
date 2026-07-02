@@ -21,10 +21,10 @@ testable. Live-acceptance tasks map 1:1 to quickstart scenarios.
 **Purpose**: package pins, scaffolding, and the binding-doc edits the constitution
 requires before use.
 
-- [ ] T001 Add `JsonSchema.Net` (latest 7.x, exact pin) to `Directory.Packages.props`; add `PackageReference` to `src/Pdp.ControlPlane.Verbs/Pdp.ControlPlane.Verbs.csproj` and `src/Pdp.ControlPlane.Registry/Pdp.ControlPlane.Registry.csproj`
-- [ ] T002 [P] Create `archetypes/README.md`: authoring conventions, release runbook (edit `catalog.json` + create tag `archetype/<name>/v<semver>` in the same PR), parameter-schema conventions per `contracts/archetype-catalog.md`
-- [ ] T003 [P] Update `docs/glossary.md`: extend **Managed unit** to include workloads (FR-014); cross-check **Archetype catalog** wording matches the repo-managed model (git source of change, Postgres projection)
-- [ ] T004 [P] Extend `.github/workflows/controlplane-host-images.yml` path filter with `archetypes/catalog.json` and add `COPY archetypes/catalog.json` to the api image `src/Pdp.ControlPlane.Api/Dockerfile` (R1)
+- [X] T001 Add `JsonSchema.Net` (latest 7.x, exact pin) to `Directory.Packages.props`; add `PackageReference` to `src/Pdp.ControlPlane.Verbs/Pdp.ControlPlane.Verbs.csproj` and `src/Pdp.ControlPlane.Registry/Pdp.ControlPlane.Registry.csproj` — pinned **7.4.0** (latest stable 7.x on NuGet, 2026-07-02); `dotnet build` green
+- [X] T002 [P] Create `archetypes/README.md`: authoring conventions, release runbook (edit `catalog.json` + create tag `archetype/<name>/v<semver>` in the same PR), parameter-schema conventions per `contracts/archetype-catalog.md`
+- [X] T003 [P] Update `docs/glossary.md`: extend **Managed unit** to include workloads (FR-014); cross-check **Archetype catalog** wording matches the repo-managed model (git source of change, Postgres projection) — also updated the `env_id` parenthetical for consistency
+- [X] T004 [P] Extend `.github/workflows/controlplane-host-images.yml` path filter with `archetypes/catalog.json` and add `COPY archetypes/catalog.json` to the api image `src/Pdp.ControlPlane.Api/Dockerfile` (R1) — NOTE: api image build fails until T013 authors `archetypes/catalog.json` (CI builds only on push to main, so harmless within this branch)
 
 ---
 

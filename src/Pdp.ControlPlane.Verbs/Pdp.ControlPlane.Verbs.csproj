@@ -13,6 +13,9 @@
     <PackageReference Include="WolverineFx.EntityFrameworkCore" />
     <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <PackageReference Include="FluentValidation" />
+    <!-- Workload deploy parameters are evaluated against the archetype version's JSON schema
+         (draft 2020-12, OutputFormat.List) before any intent/dispatch (spec 008). -->
+    <PackageReference Include="JsonSchema.Net" />
     <!-- Telemetry: ActivitySource/Meter + UseAzureMonitor() wiring (T022). The AspNetCore flavor is
          host-agnostic enough to run under the console CLI too (no server is required). -->
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
