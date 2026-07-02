@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace Pdp.ControlPlane.Verbs.Model;
 
 /// <summary>
@@ -27,6 +29,29 @@ public sealed record SpokeCreateRequest(
 public sealed record FabricCreateRequest(
     string Region,
     int RegionIndex,
+    string? Owner = null);
+
+/// <summary>
+/// Request to deploy a workload from the archetype catalog into a vended spoke (spec 008,
+/// contracts/workload-verbs.md). The archetype <b>version</b> is never a caller input — the verb
+/// resolves the newest active version and stamps it permanently (FR-005). <see cref="Parameters"/>
+/// are validated against the resolved version's JSON schema <b>before</b> any intent or dispatch
+/// (FR-003). Immutable; System.Text.Json serializable.
+/// </summary>
+/// <param name="Subscription">Target subscription id (must equal the containing spoke's).</param>
+/// <param name="SpokeName">Existing managed spoke (<c>kind=spoke</c>, Active) the workload lands in.</param>
+/// <param name="WorkloadName">Workload name (<c>^[a-z0-9-]{1,24}$</c>); unique per subscription (R4).</param>
+/// <param name="Archetype">Catalog archetype name; version resolved server-side (newest active).</param>
+/// <param name="Environment">The <c>pdp-env</c> value (<c>^[a-z0-9-]{1,16}$</c>) grouping workloads into environments.</param>
+/// <param name="Parameters">Caller parameters, validated against the archetype's JSON schema.</param>
+/// <param name="Owner">Requesting principal; defaults to the running identity when null.</param>
+public sealed record WorkloadDeployRequest(
+    string Subscription,
+    string SpokeName,
+    string WorkloadName,
+    string Archetype,
+    string Environment,
+    JsonObject Parameters,
     string? Owner = null);
 
 /// <summary>

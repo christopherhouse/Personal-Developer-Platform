@@ -64,6 +64,7 @@ var root = new RootCommand("pdp — Personal Developer Platform control plane (s
 root.Options.Add(jsonOption);
 root.Options.Add(verboseOption);
 root.Subcommands.Add(SpokeCommand.Create(host.Services, jsonOption));
+root.Subcommands.Add(WorkloadCommand.Create(host.Services, jsonOption));
 root.Subcommands.Add(FabricCommand.Create(host.Services, jsonOption, controlPlaneOptions.PlatformSubscriptionId));
 root.Subcommands.Add(IpamCommand.Create(host.Services, jsonOption));
 root.Subcommands.Add(InventoryCommand.Create(host.Services, jsonOption));

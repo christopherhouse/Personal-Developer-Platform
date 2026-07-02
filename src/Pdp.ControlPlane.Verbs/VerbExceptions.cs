@@ -94,3 +94,122 @@ public sealed class EnvironmentNotFoundException : Exception
             ? $"No environment with env_id '{id}' is registered."
             : $"No environment '{reference.Name}' ({reference.Kind}) is registered in subscription '{reference.Subscription}'.";
 }
+
+/// <summary>
+/// One caller parameter's failure against the archetype's JSON schema (spec 008, FR-003) — the
+/// schema-derived shape JsonSchema.Net's <c>OutputFormat.List</c> yields, surfaced verbatim by the
+/// CLI (one <c>&lt;path&gt;: &lt;message&gt;</c> line per violation, exit 2) and the MCP tool (as data,
+/// no confirmation token). Immutable; System.Text.Json serializable.
+/// </summary>
+/// <param name="Path">JSON Pointer to the offending parameter (<c>(root)</c> for document-level failures).</param>
+/// <param name="Keyword">The schema keyword that failed (e.g. <c>enum</c>, <c>required</c>, <c>maximum</c>).</param>
+/// <param name="Message">The evaluator's human-readable constraint message.</param>
+public sealed record ParameterViolation(string Path, string Keyword, string Message);
+
+/// <summary>
+/// The caller's parameters failed the archetype version's JSON schema (spec 008, FR-003/SC-003).
+/// Thrown <b>before</b> any intent row or dispatch, so an invalid deploy never reaches the execution
+/// plane. Carries every violation so one rejection names everything wrong at once.
+/// </summary>
+public sealed class WorkloadParameterValidationException : Exception
+{
+    /// <summary>Creates the exception for parameters that failed <paramref name="archetype"/>'s schema.</summary>
+    public WorkloadParameterValidationException(
+        string archetype,
+        string version,
+        IReadOnlyList<ParameterViolation> violations)
+        : base($"Parameters do not satisfy archetype '{archetype}' {version}: " +
+               string.Join("; ", violations.Select(v => $"{v.Path}: {v.Message}")) +
+               ". Nothing was recorded or dispatched.")
+    {
+        Archetype = archetype;
+        Version = version;
+        Violations = violations;
+    }
+
+    /// <summary>The archetype whose schema rejected the parameters.</summary>
+    public string Archetype { get; }
+
+    /// <summary>The resolved archetype version whose schema was evaluated.</summary>
+    public string Version { get; }
+
+    /// <summary>Every schema violation, one per offending parameter/constraint.</summary>
+    public IReadOnlyList<ParameterViolation> Violations { get; }
+}
+
+/// <summary>
+/// The requested archetype cannot be deployed: it is either <b>unknown</b> to the catalog or
+/// <b>retired</b> (no new deploys; existing workloads unaffected — FR-002/FR-004, US4-AS2). The two
+/// cases carry distinct messages so the owner knows whether to fix a typo or pick a successor.
+/// Thrown before any intent or dispatch.
+/// </summary>
+public sealed class ArchetypeNotDeployableException : Exception
+{
+    private ArchetypeNotDeployableException(string archetype, bool isRetired, string message)
+        : base(message)
+    {
+        Archetype = archetype;
+        IsRetired = isRetired;
+    }
+
+    /// <summary>The archetype that cannot be deployed.</summary>
+    public string Archetype { get; }
+
+    /// <summary>True when the archetype exists but is retired; false when it is unknown.</summary>
+    public bool IsRetired { get; }
+
+    /// <summary>The archetype is not in the catalog at all.</summary>
+    public static ArchetypeNotDeployableException Unknown(string archetype) =>
+        new(archetype, isRetired: false,
+            $"Archetype '{archetype}' is not in the catalog. Nothing was recorded or dispatched.");
+
+    /// <summary>The archetype is retired — no new deploys (existing workloads are unaffected).</summary>
+    public static ArchetypeNotDeployableException Retired(string archetype) =>
+        new(archetype, isRetired: true,
+            $"Archetype '{archetype}' is retired: new deploys are refused; existing workloads are " +
+            "unaffected. Nothing was recorded or dispatched.");
+}
+
+/// <summary>
+/// A repeat deploy of an <b>existing</b> workload presented different parameters (or a different
+/// archetype). In-place reconfiguration is out of scope for spec 008 — the supported path is
+/// destroy → deploy; identical parameters follow the idempotent-convergence behavior instead
+/// (contracts/workload-verbs.md §repeat-deploy).
+/// </summary>
+public sealed class WorkloadParametersChangedException : Exception
+{
+    /// <summary>Creates the exception for a changed repeat deploy of <paramref name="workloadName"/>.</summary>
+    public WorkloadParametersChangedException(string workloadName)
+        : base($"Workload '{workloadName}' already exists with different parameters (or a different " +
+               "archetype). In-place reconfiguration is not supported — destroy the workload, then " +
+               "deploy the new configuration. Nothing was dispatched.")
+    {
+        WorkloadName = workloadName;
+    }
+
+    /// <summary>The existing workload whose configuration differs from the request.</summary>
+    public string WorkloadName { get; }
+}
+
+/// <summary>
+/// The target spoke exists but is not <c>Active</c>, so a workload cannot be deployed into it
+/// (spec 008, US1-AS5). A missing spoke is <see cref="EnvironmentNotFoundException"/> instead; both
+/// are thrown before any intent or dispatch.
+/// </summary>
+public sealed class SpokeNotActiveException : Exception
+{
+    /// <summary>Creates the exception for a spoke that is not ready to receive workloads.</summary>
+    public SpokeNotActiveException(string spokeName, EnvironmentStatus status)
+        : base($"Spoke '{spokeName}' is not Active (current status: {status}); workloads deploy only " +
+               "into Active spokes. Nothing was recorded or dispatched.")
+    {
+        SpokeName = spokeName;
+        Status = status;
+    }
+
+    /// <summary>The spoke that is not active.</summary>
+    public string SpokeName { get; }
+
+    /// <summary>The spoke's current lifecycle status.</summary>
+    public EnvironmentStatus Status { get; }
+}

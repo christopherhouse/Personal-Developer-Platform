@@ -15,5 +15,6 @@ output "shared_dns_zone_ids" {
     "privatelink.postgres.database.azure.com" = module.zone_postgres.resource_id
     "privatelink.blob.core.windows.net"       = module.zone_blob.resource_id
     "privatelink.vaultcore.azure.net"         = module.zone_kv.resource_id
+    "privatelink.database.windows.net"        = module.zone_sql.resource_id
   }
 }

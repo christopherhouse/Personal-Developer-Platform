@@ -1,0 +1,176 @@
+name: workload-deploy
+
+# run-name carries the control plane's correlation surrogate so a dispatched run maps back to its
+# environment by parsing the title (spec 006, research §4): `pdp <mode> <env_id>`.
+run-name: pdp ${{ inputs.mode }} ${{ inputs.env_id }}
+
+# Deploy one workload archetype into a vended spoke (spec 008 — Articles I/II: OpenTofu only in
+# dispatched CI, OIDC, zero stored secrets). PINNED-TAG execution (R7): the workflow DEFINITION runs
+# from the default branch (as every dispatched workflow does), but the checkout below uses
+# `ref: inputs.archetype_ref` — the git tag `archetype/<name>/<version>` the verb layer stamped —
+# so the MODULE CONTENT is exactly the cataloged version, never floating main. The control plane
+# supplies archetype_path + archetype_ref from the catalog; the caller never chooses either.
+#
+# State: one state per workload at workloads/<sub-id>/<spoke-name>/<workload-name> (FR-011), set at
+# init via partial backend config — same mechanism/storage account as every stack. A re-deploy of the
+# same (sub, name) targets the same state and converges.
+
+on:
+  workflow_dispatch:
+    inputs:
+      env_id:
+        description: "Control-plane correlation surrogate (env_id); echoed into run-name (spec 006)"
+        required: false
+        type: string
+        default: ""
+      mode:
+        description: "plan = tofu plan only (Article VIII preview); apply = deploy the workload"
+        required: false
+        type: choice
+        default: apply
+        options:
+          - plan
+          - apply
+      region:
+        description: "Azure region of the containing spoke, e.g. westus3"
+        required: true
+        type: string
+        default: westus3
+      target_subscription_id:
+        description: "Subscription the spoke (and so the workload) lives in"
+        required: true
+        type: string
+      spoke_name:
+        description: "Containing spoke name, e.g. app1"
+        required: true
+        type: string
+      workload_name:
+        description: "Workload name, unique within the subscription ([a-z0-9-], 1–24)"
+        required: true
+        type: string
+      archetype_path:
+        description: "Repo-relative archetype module dir (from the catalog), e.g. archetypes/container-app-sql"
+        required: true
+        type: string
+      archetype_ref:
+        description: "Pinned archetype git tag (from the catalog), e.g. archetype/container-app-sql/v1.0.0"
+        required: true
+        type: string
+      parameters_json:
+        description: "The schema-validated archetype parameters as a JSON object (canonical form)"
+        required: true
+        type: string
+      pdp_env:
+        description: "Workload environment (the pdp-env tag), e.g. dev"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write          # OIDC token issuance for azure/login + the azurerm backend/providers
+
+concurrency:
+  # Per-workload lock: serializes deploy/destroy of the SAME workload, while different workloads
+  # deploy in parallel. workload-destroy uses the same group so a destroy never races a deploy.
+  group: tofu-workload-${{ inputs.spoke_name }}-${{ inputs.workload_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      # Backend subscription = the platform sub (holds the state account). The workload's target /
+      # platform subscriptions reach the providers via the TF_VAR_* below.
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Module inputs, threaded from the dispatch. parameters_json passes WHOLE as the object-typed
+      # `parameters` variable (defaults applied by the module, never injected by the control plane).
+      TF_VAR_region: ${{ inputs.region }}
+      TF_VAR_target_subscription_id: ${{ inputs.target_subscription_id }}
+      TF_VAR_platform_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_spoke_name: ${{ inputs.spoke_name }}
+      TF_VAR_workload_name: ${{ inputs.workload_name }}
+      TF_VAR_pdp_env: ${{ inputs.pdp_env }}
+      TF_VAR_parameters: ${{ inputs.parameters_json }}
+    steps:
+      # PINNED-TAG checkout (R7): the module content is the stamped catalog version. The
+      # .opentofu-version pin travels with the tag, so setup-opentofu reads it from this checkout.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.archetype_ref }}
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: .opentofu-version
+          tofu_wrapper: false
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Per-workload state key via partial backend config (backend.tf omits the key) — FR-011.
+      - name: tofu init (per-workload backend key)
+        run: |
+          tofu -chdir=${{ inputs.archetype_path }} init -input=false -no-color \
+            -backend-config="key=workloads/${{ inputs.target_subscription_id }}/${{ inputs.spoke_name }}/${{ inputs.workload_name }}"
+
+      # Two-phase dispatch (Article VIII): the control plane runs `mode=plan` first to surface the
+      # plan (private-by-default posture and any publicEndpoint opt-in are visible here), then
+      # `mode=apply` after confirmation. All module inputs flow from the TF_VAR_* env above.
+      - name: tofu plan
+        run: |
+          tofu -chdir=${{ inputs.archetype_path }} plan -input=false -no-color -out=tfplan | tee plan.txt
+          { echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # On a plan run, publish the plan as a durable artifact the control plane downloads into the
+      # environment's PlanSummary for confirmation (contracts/dispatch-and-tracking.md §6); never apply.
+      - name: tofu show (structured plan)
+        if: inputs.mode == 'plan'
+        run: tofu -chdir=${{ inputs.archetype_path }} show -no-color -json tfplan > plan.json
+
+      - name: Upload plan artifact
+        if: inputs.mode == 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ inputs.env_id }}
+          path: |
+            plan.txt
+            plan.json
+          if-no-files-found: warn
+
+      - name: tofu apply
+        if: inputs.mode != 'plan'
+        run: tofu -chdir=${{ inputs.archetype_path }} apply -input=false -no-color -auto-approve tfplan
+
+      - name: Run traceability
+        if: always()
+        run: echo "workload-deploy mode='${{ inputs.mode }}' env_id='${{ inputs.env_id }}' workload='${{ inputs.workload_name }}' (archetype ${{ inputs.archetype_ref }}) into spoke '${{ inputs.spoke_name }}' in ${{ inputs.target_subscription_id }} / ${{ inputs.region }} at commit ${{ github.sha }}." >> "$GITHUB_STEP_SUMMARY"
+
+  # Failure hook (repo convention — see .github/actions/notify-sre-agent/README.md): on any
+  # job failure, POST run context (failed jobs/steps, error annotations, log tails) to the
+  # Azure SRE Agent HTTP trigger so the agent starts investigating without an owner in the
+  # loop. Best-effort: it never fails this run; skipped entirely when the
+  # SRE_AGENT_TRIGGER_URL repo variable is unset. Checks out the DEFAULT branch (not the
+  # archetype tag) so the composite action is always current.
+  notify-sre-agent:
+    needs: [deploy]
+    if: ${{ failure() && vars.SRE_AGENT_TRIGGER_URL != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # checkout (the local composite action)
+      id-token: write  # azure/login OIDC → bearer token for the trigger
+      actions: read    # this run's jobs + logs (failure context)
+      checks: read     # per-job error annotations
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/notify-sre-agent
+        with:
+          trigger-url: ${{ vars.SRE_AGENT_TRIGGER_URL }}
+          azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+          azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}

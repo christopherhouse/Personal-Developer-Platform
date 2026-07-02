@@ -115,6 +115,7 @@ builder.Services
     .AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
     .WithTools<SpokeTools>(toolJsonOptions)
+    .WithTools<WorkloadTools>(toolJsonOptions)
     .WithTools<FabricTools>(toolJsonOptions)
     .WithTools<IpamTools>(toolJsonOptions)
     .WithTools<InventoryTools>(toolJsonOptions)
