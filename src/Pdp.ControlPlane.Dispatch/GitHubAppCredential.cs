@@ -33,6 +33,7 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
 
     private string? _cachedToken;
     private DateTimeOffset _cachedTokenExpiresAt;
+    private IGitHubClient? _cachedClient;
 
     /// <summary>Creates the credential from bound <see cref="GitHubAppOptions"/>.</summary>
     public GitHubAppCredential(GitHubAppOptions options, TimeProvider? timeProvider = null)
@@ -44,10 +45,15 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
     /// <inheritdoc />
     public async Task<IGitHubClient> CreateInstallationClientAsync(CancellationToken cancellationToken = default)
     {
-        var token = await GetInstallationTokenAsync(cancellationToken).ConfigureAwait(false);
-        var client = NewClient();
-        client.Credentials = new Credentials(token);
-        return client;
+        // GetInstallationTokenAsync owns its own fast-path check (before the semaphore) and the
+        // double-checked locking inside it — calling it unconditionally avoids a second racy read
+        // of _cachedClient here while still skipping the semaphore on the hot path.
+        await GetInstallationTokenAsync(cancellationToken).ConfigureAwait(false);
+
+        // _cachedClient is set atomically with _cachedToken inside the refresh critical section,
+        // so it is guaranteed non-null after a successful return from GetInstallationTokenAsync.
+        return _cachedClient ?? throw new InvalidOperationException(
+            "GitHubAppCredential: installation client was not initialized after token refresh.");
     }
 
     private async Task<string> GetInstallationTokenAsync(CancellationToken cancellationToken)
@@ -77,6 +83,9 @@ public sealed class GitHubAppCredential : IGitHubAppCredential, IDisposable
 
             _cachedToken = installationToken.Token;
             _cachedTokenExpiresAt = installationToken.ExpiresAt;
+            var client = NewClient();
+            client.Credentials = new Credentials(_cachedToken);
+            _cachedClient = client;
             return _cachedToken;
         }
         finally

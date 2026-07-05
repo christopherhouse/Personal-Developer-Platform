@@ -75,6 +75,13 @@ public interface IEnvironmentRegistry
     /// <summary>Returns an environment's provisioning-run audit trail, newest first (FR-015).</summary>
     Task<IReadOnlyList<ProvisioningRun>> GetRunsAsync(Guid envId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns the single most-recent provisioning run for the environment, or <see langword="null"/> if
+    /// none exists. Issues a <c>LIMIT 1</c> query — prefer this over <see cref="GetRunsAsync"/> when
+    /// only the latest run is needed (FR-015).
+    /// </summary>
+    Task<ProvisioningRun?> GetLatestRunAsync(Guid envId, CancellationToken cancellationToken = default);
+
     /// <summary>Resolves a single provisioning run by its surrogate <c>run_id</c>, or null (FR-015).</summary>
     Task<ProvisioningRun?> FindRunByIdAsync(Guid runId, CancellationToken cancellationToken = default);
 }

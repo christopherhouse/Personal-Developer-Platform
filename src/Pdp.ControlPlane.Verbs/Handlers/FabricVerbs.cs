@@ -83,8 +83,7 @@ public sealed class FabricVerbs(
             .ConfigureAwait(false);
         if (existing is { Status: EnvironmentStatus.Provisioning })
         {
-            var latest = (await registry.GetRunsAsync(existing.EnvId, cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault();
+            var latest = await registry.GetLatestRunAsync(existing.EnvId, cancellationToken).ConfigureAwait(false);
             if (IsSucceededPlan(latest))
             {
                 return await ConfirmCreateAsync(existing, request.RegionIndex, confirmation, cancellationToken).ConfigureAwait(false);
@@ -162,8 +161,7 @@ public sealed class FabricVerbs(
 
         if (env.Status == EnvironmentStatus.Destroying)
         {
-            var latest = (await registry.GetRunsAsync(env.EnvId, cancellationToken).ConfigureAwait(false))
-                .FirstOrDefault();
+            var latest = await registry.GetLatestRunAsync(env.EnvId, cancellationToken).ConfigureAwait(false);
             if (IsSucceededPlan(latest))
             {
                 return await ConfirmDestroyAsync(env, regionView.RegionIndex, cancellationToken).ConfigureAwait(false);
