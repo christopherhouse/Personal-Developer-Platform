@@ -3,6 +3,7 @@ using System;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pdp.ControlPlane.Registry;
@@ -12,9 +13,11 @@ using Pdp.ControlPlane.Registry;
 namespace Pdp.ControlPlane.Registry.Migrations
 {
     [DbContext(typeof(RegistryDbContext))]
-    partial class RegistryDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702201213_AddCompositeRunIndex")]
+    partial class AddCompositeRunIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -23,103 +26,6 @@ namespace Pdp.ControlPlane.Registry.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.Archetype", b =>
-                {
-                    b.Property<string>("Name")
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("status");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Name")
-                        .HasName("pk_archetypes");
-
-                    b.ToTable("archetypes", "registry");
-                });
-
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.ArchetypeVersion", b =>
-                {
-                    b.Property<string>("ArchetypeName")
-                        .HasColumnType("text")
-                        .HasColumnName("archetype_name");
-
-                    b.Property<string>("Version")
-                        .HasColumnType("text")
-                        .HasColumnName("version");
-
-                    b.Property<string>("ContentHash")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content_hash");
-
-                    b.Property<string>("ModulePath")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("module_path");
-
-                    b.Property<string>("ParameterSchema")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("parameter_schema");
-
-                    b.Property<DateTimeOffset>("RegisteredAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("registered_at");
-
-                    b.HasKey("ArchetypeName", "Version")
-                        .HasName("pk_archetype_versions");
-
-                    b.ToTable("archetype_versions", "registry");
-                });
-
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.CatalogSync", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("AppliedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("applied_at");
-
-                    b.Property<string>("ContentHash")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("content_hash");
-
-                    b.Property<string>("Outcome")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("outcome");
-
-                    b.Property<string>("Summary")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("summary");
-
-                    b.HasKey("Id")
-                        .HasName("pk_catalog_syncs");
-
-                    b.ToTable("catalog_syncs", "registry");
-                });
 
             modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.Environment", b =>
                 {
@@ -250,58 +156,6 @@ namespace Pdp.ControlPlane.Registry.Migrations
                     b.ToTable("provisioning_runs", "registry");
                 });
 
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.WorkloadDetails", b =>
-                {
-                    b.Property<Guid>("EnvId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("env_id");
-
-                    b.Property<string>("ArchetypeName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("archetype_name");
-
-                    b.Property<string>("ArchetypeVersion")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("archetype_version");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Parameters")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("parameters");
-
-                    b.Property<string>("PdpEnv")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("pdp_env");
-
-                    b.Property<string>("SpokeName")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("spoke_name");
-
-                    b.Property<string>("SpokeSubscription")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("spoke_subscription");
-
-                    b.HasKey("EnvId")
-                        .HasName("pk_workloads");
-
-                    b.HasIndex("ArchetypeName", "ArchetypeVersion")
-                        .HasDatabaseName("ix_workloads_archetype_name_archetype_version");
-
-                    b.HasIndex("SpokeSubscription", "SpokeName")
-                        .HasDatabaseName("ix_workloads_spoke");
-
-                    b.ToTable("workloads", "registry");
-                });
-
             modelBuilder.Entity("Pdp.ControlPlane.Registry.EnvironmentSaga", b =>
                 {
                     b.Property<Guid>("Id")
@@ -335,18 +189,6 @@ namespace Pdp.ControlPlane.Registry.Migrations
                     b.ToTable("environment_saga", "registry");
                 });
 
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.ArchetypeVersion", b =>
-                {
-                    b.HasOne("Pdp.ControlPlane.Registry.Entities.Archetype", "Archetype")
-                        .WithMany("Versions")
-                        .HasForeignKey("ArchetypeName")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_archetype_versions_archetypes_archetype_name");
-
-                    b.Navigation("Archetype");
-                });
-
             modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.ProvisioningRun", b =>
                 {
                     b.HasOne("Pdp.ControlPlane.Registry.Entities.Environment", "Environment")
@@ -357,30 +199,6 @@ namespace Pdp.ControlPlane.Registry.Migrations
                         .HasConstraintName("fk_provisioning_runs_environments_env_id");
 
                     b.Navigation("Environment");
-                });
-
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.WorkloadDetails", b =>
-                {
-                    b.HasOne("Pdp.ControlPlane.Registry.Entities.Environment", "Environment")
-                        .WithOne()
-                        .HasForeignKey("Pdp.ControlPlane.Registry.Entities.WorkloadDetails", "EnvId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_workloads_environments_env_id");
-
-                    b.HasOne("Pdp.ControlPlane.Registry.Entities.ArchetypeVersion", null)
-                        .WithMany()
-                        .HasForeignKey("ArchetypeName", "ArchetypeVersion")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_workloads_archetype_versions_archetype_name_archetype_versi");
-
-                    b.Navigation("Environment");
-                });
-
-            modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.Archetype", b =>
-                {
-                    b.Navigation("Versions");
                 });
 
             modelBuilder.Entity("Pdp.ControlPlane.Registry.Entities.Environment", b =>
